@@ -1,208 +1,282 @@
 // ShadowLens Dashboard JavaScript
-let websiteHistory = [];
-let filteredHistory = [];
+let websiteData = [];
+let filteredData = [];
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔒 ShadowLens Dashboard: Initializing...');
-    loadWebsiteHistory();
+    loadDashboardData();
     setupEventListeners();
 });
 
 function setupEventListeners() {
     // Search functionality
-    document.getElementById('search-box').addEventListener('input', function(e) {
-        filterWebsites();
-    });
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterWebsites();
+        });
+    }
 
-    // Risk filter
-    document.getElementById('risk-filter').addEventListener('change', function(e) {
-        filterWebsites();
+    // Filter buttons
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            // Add active class to clicked button
+            this.classList.add('active');
+            filterWebsites();
+        });
     });
 }
 
-function loadWebsiteHistory() {
-    // Try to load from JSON file
+function loadDashboardData() {
+    console.log('📊 Loading dashboard data...');
+    
+    // Try to load from dashboard_data.json first
     fetch('dashboard_data.json')
         .then(response => {
-            if (response.ok) {
-                return response.json();
-            } else {
-                throw new Error('No data file found');
+            if (!response.ok) {
+                throw new Error('Failed to load dashboard data');
             }
+            return response.json();
         })
         .then(data => {
-            if (data && data.websiteHistory && data.websiteHistory.length > 0) {
-                websiteHistory = data.websiteHistory;
-                displayWebsites();
-                updateStats();
-                console.log('✅ Loaded real data from JSON file');
+            console.log('✅ Dashboard data loaded:', data);
+            if (data && data.websiteHistory) {
+                websiteData = data.websiteHistory;
+                updateDashboard();
             } else {
-                showEmptyState();
+                console.warn('No website history found in data');
+                showNoDataMessage();
             }
         })
         .catch(error => {
-            console.log('No saved data found, showing empty state');
-            showEmptyState();
+            console.error('❌ Error loading dashboard data:', error);
+            showNoDataMessage();
         });
 }
 
-function showEmptyState() {
-    const websiteList = document.getElementById('website-list');
-    websiteList.innerHTML = `
-        <div class="no-data">
-            <i class="fas fa-search"></i>
-            <p>No website analyses yet</p>
-            <p style="font-size: 0.9rem; margin-top: 10px; color: #718096;">
-                Start analyzing websites with the test script to see data here
-            </p>
-        </div>
-    `;
+function updateDashboard() {
+    console.log('🔄 Updating dashboard with', websiteData.length, 'websites');
     
-    // Reset stats to zero
-    document.getElementById('total-websites').textContent = '0';
-    document.getElementById('high-risk-count').textContent = '0';
-    document.getElementById('safe-count').textContent = '0';
-    document.getElementById('avg-risk-score').textContent = '0';
-}
-
-function displayWebsites() {
-    const websiteList = document.getElementById('website-list');
-    const searchTerm = document.getElementById('search-box').value.toLowerCase();
-    const riskFilter = document.getElementById('risk-filter').value;
-
-    // Filter websites
-    filteredHistory = websiteHistory.filter(website => {
-        const matchesSearch = website.url.toLowerCase().includes(searchTerm);
-        const matchesRisk = riskFilter === 'all' || website.recommendation.toLowerCase() === riskFilter;
-        return matchesSearch && matchesRisk;
-    });
-
-    if (filteredHistory.length === 0) {
-        if (websiteHistory.length === 0) {
-            showEmptyState();
-        } else {
-            websiteList.innerHTML = `
-                <div class="no-data">
-                    <i class="fas fa-search"></i>
-                    <p>No websites found matching your criteria</p>
-                </div>
-            `;
-        }
-        return;
-    }
-
-    // Sort by timestamp (newest first)
-    filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    websiteList.innerHTML = filteredHistory.map(website => {
-        const timeAgo = getTimeAgo(new Date(website.timestamp));
-        const riskClass = getRiskClass(website.recommendation);
-        
-        return `
-            <div class="website-item">
-                <div class="website-header">
-                    <div class="website-url">${website.url}</div>
-                    <div class="risk-badge ${riskClass}">${website.recommendation}</div>
-                </div>
-                <div class="website-time">${timeAgo}</div>
-                <div class="website-details">
-                    <div class="detail-item">
-                        <div class="detail-label">Risk Score</div>
-                        <div class="detail-value">${website.riskScore}/10</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Threats</div>
-                        <div class="detail-value">${website.privacyThreats ? website.privacyThreats.length : 0}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Forms</div>
-                        <div class="detail-value">${website.forms || 0}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Sensitive Fields</div>
-                        <div class="detail-value">${website.sensitiveFields || 0}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Verification</div>
-                        <div class="detail-value">${website.verificationStatus || 'Unknown'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">SSL</div>
-                        <div class="detail-value">${website.sslCertificate ? '✅' : '❌'}</div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function getTimeAgo(date) {
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
+    // Update statistics
+    updateStatistics();
     
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    return `${Math.floor(diffInSeconds / 86400)}d ago`;
-}
-
-function getRiskClass(recommendation) {
-    const risk = recommendation.toLowerCase();
-    if (risk === 'safe') return 'risk-safe';
-    if (risk === 'moderate') return 'risk-moderate';
-    if (risk === 'caution') return 'risk-caution';
-    if (risk === 'dangerous' || risk === 'high risk') return 'risk-dangerous';
-    return 'risk-moderate';
-}
-
-function filterWebsites() {
+    // Update risk distribution chart
+    updateRiskDistribution();
+    
+    // Display websites
     displayWebsites();
 }
 
-function updateStats() {
-    const totalWebsites = websiteHistory.length;
-    const highRiskCount = websiteHistory.filter(w => 
-        w.recommendation === 'Dangerous' || w.recommendation === 'High Risk'
-    ).length;
-    const safeCount = websiteHistory.filter(w => w.recommendation === 'Safe').length;
-    const avgRiskScore = totalWebsites > 0 ? 
-        Math.round(websiteHistory.reduce((sum, w) => sum + (w.riskScore || 0), 0) / totalWebsites) : 0;
+function updateStatistics() {
+    const totalWebsites = websiteData.length;
+    const avgRisk = totalWebsites > 0 ? 
+        (websiteData.reduce((sum, site) => sum + (site.riskScore || 0), 0) / totalWebsites).toFixed(1) : 0;
+    const highRiskSites = websiteData.filter(site => (site.riskScore || 0) >= 6).length;
+    const totalThreats = websiteData.reduce((sum, site) => sum + (site.privacyThreats ? site.privacyThreats.length : 0), 0);
 
-    document.getElementById('total-websites').textContent = totalWebsites;
-    document.getElementById('high-risk-count').textContent = highRiskCount;
-    document.getElementById('safe-count').textContent = safeCount;
-    document.getElementById('avg-risk-score').textContent = avgRiskScore;
+    // Update stat cards
+    updateElement('total-websites', totalWebsites);
+    updateElement('avg-risk', avgRisk);
+    updateElement('high-risk', highRiskSites);
+    updateElement('total-threats', totalThreats);
 }
 
-function refreshData() {
-    console.log('🔄 Refreshing dashboard data...');
-    loadWebsiteHistory();
+function updateRiskDistribution() {
+    const safeCount = websiteData.filter(site => (site.riskScore || 0) <= 3).length;
+    const moderateCount = websiteData.filter(site => (site.riskScore || 0) > 3 && (site.riskScore || 0) <= 5).length;
+    const cautionCount = websiteData.filter(site => (site.riskScore || 0) > 5 && (site.riskScore || 0) <= 7).length;
+    const dangerousCount = websiteData.filter(site => (site.riskScore || 0) > 7).length;
+
+    updateElement('safe-count', safeCount);
+    updateElement('moderate-count', moderateCount);
+    updateElement('caution-count', cautionCount);
+    updateElement('dangerous-count', dangerousCount);
 }
 
-function exportData() {
-    if (websiteHistory.length === 0) {
-        alert('No data to export. Start analyzing websites first.');
+function displayWebsites() {
+    const container = document.getElementById('websites-container');
+    if (!container) return;
+
+    if (websiteData.length === 0) {
+        container.innerHTML = `
+            <div class="no-data">
+                <p>No website analyses found</p>
+                <p>Start analyzing websites to see data here</p>
+            </div>
+        `;
         return;
     }
 
-    const data = {
-        exportDate: new Date().toISOString(),
-        totalWebsites: websiteHistory.length,
-        websites: websiteHistory
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `shadowlens-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    console.log('📊 Data exported successfully');
+    // Apply current filters
+    filterWebsites();
 }
 
-console.log('🔒 ShadowLens Dashboard: Ready! (Real Data Only)'); 
+function filterWebsites() {
+    const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+    const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+
+    console.log('🔍 Filtering websites:', { searchTerm, activeFilter });
+
+    filteredData = websiteData.filter(site => {
+        // Search filter
+        const matchesSearch = !searchTerm || 
+            site.url.toLowerCase().includes(searchTerm) ||
+            (site.websiteType && site.websiteType.toLowerCase().includes(searchTerm));
+
+        // Risk filter
+        let matchesRisk = true;
+        const riskScore = site.riskScore || 0;
+        
+        switch (activeFilter) {
+            case 'safe':
+                matchesRisk = riskScore <= 3;
+                break;
+            case 'moderate':
+                matchesRisk = riskScore > 3 && riskScore <= 5;
+                break;
+            case 'caution':
+                matchesRisk = riskScore > 5 && riskScore <= 7;
+                break;
+            case 'dangerous':
+                matchesRisk = riskScore > 7;
+                break;
+            default: // 'all'
+                matchesRisk = true;
+        }
+
+        return matchesSearch && matchesRisk;
+    });
+
+    renderWebsites();
+}
+
+function renderWebsites() {
+    const container = document.getElementById('websites-container');
+    if (!container) return;
+
+    if (filteredData.length === 0) {
+        container.innerHTML = `
+            <div class="no-data">
+                <p>No websites match the current filters</p>
+                <p>Try adjusting your search or filter criteria</p>
+            </div>
+        `;
+        return;
+    }
+
+    const websitesHTML = filteredData.map(site => createWebsiteCard(site)).join('');
+    container.innerHTML = `
+        <div class="websites-grid">
+            ${websitesHTML}
+        </div>
+    `;
+}
+
+function createWebsiteCard(site) {
+    const riskScore = site.riskScore || 0;
+    const riskLevel = getRiskLevel(riskScore);
+    const riskClass = `risk-${riskLevel.toLowerCase()}`;
+    
+    const timestamp = site.timestamp ? new Date(site.timestamp).toLocaleString() : 'Unknown';
+    const threats = site.privacyThreats || [];
+    const forms = site.forms || 0;
+    const sensitiveFields = site.sensitiveFields || 0;
+    const websiteType = site.websiteType || 'general';
+
+    return `
+        <div class="website-card">
+            <div class="website-header">
+                <div class="website-url">${truncateUrl(site.url)}</div>
+                <div class="risk-badge ${riskClass}">${riskLevel}</div>
+            </div>
+            
+            <div class="website-details">
+                <div class="detail-row">
+                    <span class="detail-label">Risk Score:</span>
+                    <span>${riskScore}/10</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Website Type:</span>
+                    <span>${formatWebsiteType(websiteType)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Forms:</span>
+                    <span>${forms} (${sensitiveFields} sensitive)</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Threats:</span>
+                    <span>${threats.length}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Analyzed:</span>
+                    <span>${timestamp}</span>
+                </div>
+            </div>
+            
+            ${threats.length > 0 ? `
+                <div class="threats-list">
+                    <strong>Privacy Threats:</strong>
+                    ${threats.slice(0, 3).map(threat => `
+                        <div class="threat-item">${threat}</div>
+                    `).join('')}
+                    ${threats.length > 3 ? `<div class="threat-item">... and ${threats.length - 3} more</div>` : ''}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function getRiskLevel(riskScore) {
+    if (riskScore <= 3) return 'Safe';
+    if (riskScore <= 5) return 'Moderate';
+    if (riskScore <= 7) return 'Caution';
+    return 'Dangerous';
+}
+
+function formatWebsiteType(type) {
+    const types = {
+        'educational': 'Educational',
+        'social_media': 'Social Media',
+        'financial': 'Financial',
+        'ecommerce': 'E-commerce',
+        'general': 'General'
+    };
+    return types[type] || type;
+}
+
+function truncateUrl(url) {
+    if (!url) return 'Unknown URL';
+    if (url.length <= 50) return url;
+    return url.substring(0, 47) + '...';
+}
+
+function updateElement(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+function showNoDataMessage() {
+    const container = document.getElementById('websites-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="no-data">
+                <p>No analysis data available</p>
+                <p>Start analyzing websites to see data here</p>
+            </div>
+        `;
+    }
+}
+
+// Auto-refresh data every 30 seconds
+setInterval(() => {
+    console.log('🔄 Auto-refreshing dashboard data...');
+    loadDashboardData();
+}, 30000);
+
+console.log('🔒 ShadowLens Dashboard: Ready!'); 
