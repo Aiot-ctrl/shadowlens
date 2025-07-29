@@ -30,20 +30,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Listen for messages from content script
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'analysisComplete') {
-            console.log('Analysis complete received:', message.analysis);
-            currentAnalysis = message.analysis;
-            displayAnalysis(currentAnalysis);
-        } else if (message.action === 'privacyLinksFound') {
-            console.log('Privacy links found:', message.links);
-            privacyLinks = message.links;
-            displayPrivacyLinks(privacyLinks);
+        try {
+            if (message.action === 'analysisComplete') {
+                console.log('Analysis complete received:', message.analysis);
+                currentAnalysis = message.analysis;
+                displayAnalysis(currentAnalysis);
+            } else if (message.action === 'privacyLinksFound') {
+                console.log('Privacy links found:', message.links);
+                privacyLinks = message.links;
+                displayPrivacyLinks(privacyLinks);
+            }
+        } catch (error) {
+            console.error('Error in popup message listener:', error);
+            showError('Error processing analysis results');
         }
     });
     
     // Add timeout for analysis
     setTimeout(() => {
-        if (document.getElementById('loading').style.display !== 'none') {
+        const loadingElement = document.getElementById('loading');
+        if (loadingElement && loadingElement.style.display !== 'none') {
             console.log('Analysis timeout, showing error');
             showError('Analysis timed out. Please try again.');
         }
@@ -118,10 +124,15 @@ function performAnalysis(tabId) {
 }
 
 function displayAnalysis(analysis) {
-    // Hide loading and error states
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error').style.display = 'none';
-    document.getElementById('analysis').style.display = 'block';
+    try {
+        // Hide loading and error states
+        const loadingElement = document.getElementById('loading');
+        const errorElement = document.getElementById('error');
+        const analysisElement = document.getElementById('analysis');
+        
+        if (loadingElement) loadingElement.style.display = 'none';
+        if (errorElement) errorElement.style.display = 'none';
+        if (analysisElement) analysisElement.style.display = 'block';
     
     // Display current URL from address bar
     const currentUrl = analysis.url || 'Unknown URL';
@@ -205,10 +216,17 @@ function displayAnalysis(analysis) {
     }, 0);
     
     const formAnalysis = `Found ${forms.length} forms with ${totalFields} fields (${sensitiveFields} sensitive)`;
-    document.getElementById('form-analysis').textContent = formAnalysis;
+    const formAnalysisElement = document.getElementById('form-analysis');
+    if (formAnalysisElement) {
+        formAnalysisElement.textContent = formAnalysis;
+    }
     
     // Update badge
     updateBadge(riskScore);
+    } catch (error) {
+        console.error('Error in displayAnalysis:', error);
+        showError('Error displaying analysis results');
+    }
 }
 
 function displayPrivacyLinks(links) {
@@ -230,19 +248,28 @@ function displayPrivacyLinks(links) {
 }
 
 function showError(message) {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('analysis').style.display = 'none';
-    document.getElementById('error').style.display = 'block';
-    document.getElementById('error-message').textContent = message;
-    
-    // Auto-retry after 5 seconds
-    setTimeout(() => {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            if (tabs[0]) {
-                triggerAnalysis(tabs[0].id);
-            }
-        });
-    }, 5000);
+    try {
+        const loadingElement = document.getElementById('loading');
+        const analysisElement = document.getElementById('analysis');
+        const errorElement = document.getElementById('error');
+        const errorMessageElement = document.getElementById('error-message');
+        
+        if (loadingElement) loadingElement.style.display = 'none';
+        if (analysisElement) analysisElement.style.display = 'none';
+        if (errorElement) errorElement.style.display = 'block';
+        if (errorMessageElement) errorMessageElement.textContent = message;
+        
+        // Auto-retry after 5 seconds
+        setTimeout(() => {
+            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                if (tabs[0]) {
+                    triggerAnalysis(tabs[0].id);
+                }
+            });
+        }, 5000);
+    } catch (error) {
+        console.error('Error in showError:', error);
+    }
 }
 
 function retryAnalysis() {

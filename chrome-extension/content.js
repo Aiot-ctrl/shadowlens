@@ -267,54 +267,72 @@ function performLocalAnalysis(data) {
 }
 
 function saveAnalysisToStorage(analysis) {
-    // Get existing history
-    chrome.storage.local.get(['websiteHistory'], function(result) {
-        let history = result.websiteHistory || [];
-        
-        // Add new analysis
-        const newEntry = {
-            url: window.location.href,
-            timestamp: new Date().toISOString(),
-            riskScore: analysis.risk_score || 0,
-            recommendation: analysis.recommendation || 'Unknown',
-            privacyThreats: analysis.privacy_threats || [],
-            forms: analysis.forms ? analysis.forms.length : 0,
-            sensitiveFields: analysis.forms ? analysis.forms.reduce((sum, form) => 
-                sum + (form.fields ? form.fields.filter(f => f.sensitive).length : 0), 0) : 0,
-            websiteType: analysis.websiteType || 'general',
-            analysis: analysis
-        };
-        
-        // Add to beginning of history
-        history.unshift(newEntry);
-            
-        // Keep only last 100 entries
-        if (history.length > 100) {
-            history = history.slice(0, 100);
+    try {
+        // Get existing history
+        chrome.storage.local.get(['websiteHistory'], function(result) {
+            if (chrome.runtime.lastError) {
+                console.error('Error getting storage:', chrome.runtime.lastError);
+                return;
             }
             
-        // Save to storage
-        chrome.storage.local.set({ websiteHistory: history }, function() {
-            console.log('💾 Analysis saved to storage');
+            let history = result.websiteHistory || [];
+            
+            // Add new analysis
+            const newEntry = {
+                url: window.location.href,
+                timestamp: new Date().toISOString(),
+                riskScore: analysis.risk_score || 0,
+                recommendation: analysis.recommendation || 'Unknown',
+                privacyThreats: analysis.privacy_threats || [],
+                forms: analysis.forms ? analysis.forms.length : 0,
+                sensitiveFields: analysis.forms ? analysis.forms.reduce((sum, form) => 
+                    sum + (form.fields ? form.fields.filter(f => f.sensitive).length : 0), 0) : 0,
+                websiteType: analysis.websiteType || 'general',
+                analysis: analysis
+            };
+            
+            // Add to beginning of history
+            history.unshift(newEntry);
+                
+            // Keep only last 100 entries
+            if (history.length > 100) {
+                history = history.slice(0, 100);
+            }
+                
+            // Save to storage
+            chrome.storage.local.set({ websiteHistory: history }, function() {
+                if (chrome.runtime.lastError) {
+                    console.error('Error saving to storage:', chrome.runtime.lastError);
+                } else {
+                    console.log('💾 Analysis saved to storage');
+                }
+            });
         });
-    });
+    } catch (error) {
+        console.error('Error in saveAnalysisToStorage:', error);
+    }
 }
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'ping') {
-        // Respond to ping to confirm content script is ready
-        sendResponse({ status: 'ready' });
-    } else if (message.action === 'getAnalysis') {
-        sendResponse({ analysis: currentAnalysis });
-    } else if (message.action === 'analyzeCurrentPage') {
-        analyzeCurrentPage();
-        sendResponse({ status: 'analysis_started' });
-    } else if (message.action === 'getCurrentUrl') {
-        // Get URL directly from address bar
-        const currentUrl = window.location.href;
-        console.log('🌐 Getting URL from address bar:', currentUrl);
-        sendResponse({ url: currentUrl });
+    try {
+        if (message.action === 'ping') {
+            // Respond to ping to confirm content script is ready
+            sendResponse({ status: 'ready' });
+        } else if (message.action === 'getAnalysis') {
+            sendResponse({ analysis: currentAnalysis });
+        } else if (message.action === 'analyzeCurrentPage') {
+            analyzeCurrentPage();
+            sendResponse({ status: 'analysis_started' });
+        } else if (message.action === 'getCurrentUrl') {
+            // Get URL directly from address bar
+            const currentUrl = window.location.href;
+            console.log('🌐 Getting URL from address bar:', currentUrl);
+            sendResponse({ url: currentUrl });
+        }
+    } catch (error) {
+        console.error('Error in message listener:', error);
+        sendResponse({ error: error.message });
     }
 });
 
