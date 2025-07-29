@@ -288,6 +288,47 @@
             font-size: 12px;
             line-height: 1.4;
         }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .metric-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .metric-value.risk-high {
+            color: #ff9800;
+        }
+
+        .metric-value.risk-critical {
+            color: #f44336;
+        }
+
+        .metric-value.risk-medium {
+            color: #ffc107;
+        }
+
+        .metric-value.risk-low {
+            color: #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -314,6 +355,7 @@
                 <div id="risk-number" class="risk-number">-</div>
                 <div id="risk-label" class="risk-label">Analyzing...</div>
                 <div id="risk-description" class="risk-description">Privacy assessment in progress</div>
+                <div id="recommendation-reason" class="recommendation-reason" style="font-size: 11px; margin-top: 5px; opacity: 0.8;"></div>
             </div>
 
             <div id="features-used" class="features-used" style="display: none;">
@@ -339,7 +381,43 @@
                     </div>
                 </div>
 
-
+                <div class="detail-section">
+                    <div class="section-title">📊 Detailed Risk Metrics</div>
+                    <div id="risk-metrics" class="metrics-grid">
+                        <div class="metric-item">
+                            <div class="metric-label">Data Monetization</div>
+                            <div class="metric-value" id="data-monetization">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Sensitive Data</div>
+                            <div class="metric-value" id="sensitive-data">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Behavioral Tracking</div>
+                            <div class="metric-value" id="behavioral-tracking">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Legal Concerns</div>
+                            <div class="metric-value" id="legal-concerns">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Data Retention</div>
+                            <div class="metric-value" id="data-retention">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Third-Party Access</div>
+                            <div class="metric-value" id="third-party">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">International Transfer</div>
+                            <div class="metric-value" id="international">-</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Form Risks</div>
+                            <div class="metric-value" id="form-risks">-</div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="detail-section">
                     <div class="section-title">📝 Form Analysis</div>
