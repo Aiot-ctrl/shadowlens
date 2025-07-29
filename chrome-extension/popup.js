@@ -4,66 +4,149 @@ let privacyLinks = [];
 
 // Initialize popup when opened
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔒 ShadowLens Popup: Initializing Enhanced Features...');
-    
-    // Show loading state with null checks
-    const loadingElement = document.getElementById('loading');
-    const analysisElement = document.getElementById('analysis');
-    const errorElement = document.getElementById('error');
-    
-    if (loadingElement) loadingElement.style.display = 'block';
-    if (analysisElement) analysisElement.style.display = 'none';
-    if (errorElement) errorElement.style.display = 'none';
-    
-    // Get current tab and trigger analysis
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if (tabs[0]) {
-            const currentTab = tabs[0];
-            console.log('🌐 Current tab URL from address bar:', currentTab.url);
-            
-            // Show the URL immediately
-            const urlElement = document.getElementById('current-url');
-            if (urlElement) {
-                urlElement.textContent = currentTab.url;
-            }
-            
-            // Always trigger fresh analysis
-            triggerAnalysis(currentTab.id);
-        } else {
-            console.error('No active tab found');
-            showError('No active tab found');
-        }
-    });
-    
-    // Listen for messages from content script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        try {
-            if (message.action === 'analysisComplete') {
-                console.log('Analysis complete received:', message.analysis);
-                currentAnalysis = message.analysis;
-                displayAnalysis(currentAnalysis);
-            } else if (message.action === 'analysisError') {
-                console.error('Analysis error received:', message.error);
-                showError(`Analysis failed: ${message.error}`);
-            } else if (message.action === 'privacyLinksFound') {
-                console.log('Privacy links found:', message.links);
-                privacyLinks = message.links;
-                displayPrivacyLinks(privacyLinks);
-            }
-        } catch (error) {
-            console.error('Error in popup message listener:', error);
-            showError('Error processing analysis results');
-        }
-    });
-    
-    // Add timeout for analysis
-    setTimeout(() => {
+    try {
+        console.log('🔒 ShadowLens Popup: Initializing Enhanced Features...');
+        
+        // Show loading state with null checks
         const loadingElement = document.getElementById('loading');
-        if (loadingElement && loadingElement.style.display !== 'none') {
-            console.log('Analysis timeout, showing error');
-            showError('Analysis timed out. Please try again.');
+        const analysisElement = document.getElementById('analysis');
+        const errorElement = document.getElementById('error');
+        
+        if (loadingElement) {
+            try {
+                loadingElement.style.display = 'block';
+            } catch (displayError) {
+                console.error('Error setting loading display:', displayError);
+            }
         }
-    }, 10000); // 10 second timeout
+        
+        if (analysisElement) {
+            try {
+                analysisElement.style.display = 'none';
+            } catch (displayError) {
+                console.error('Error setting analysis display:', displayError);
+            }
+        }
+        
+        if (errorElement) {
+            try {
+                errorElement.style.display = 'none';
+            } catch (displayError) {
+                console.error('Error setting error display:', displayError);
+            }
+        }
+        
+        // Get current tab and trigger analysis with error handling
+        try {
+            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                try {
+                    if (tabs && tabs[0]) {
+                        const currentTab = tabs[0];
+                        console.log('🌐 Current tab URL from address bar:', currentTab.url);
+                        
+                        // Show the URL immediately with error handling
+                        try {
+                            const urlElement = document.getElementById('current-url');
+                            if (urlElement) {
+                                urlElement.textContent = currentTab.url || 'Unknown URL';
+                            }
+                        } catch (urlError) {
+                            console.error('Error setting URL display:', urlError);
+                        }
+                        
+                        // Always trigger fresh analysis with error handling
+                        try {
+                            triggerAnalysis(currentTab.id);
+                        } catch (triggerError) {
+                            console.error('Error triggering analysis:', triggerError);
+                            showError('Unable to start analysis');
+                        }
+                    } else {
+                        console.error('No active tab found');
+                        showError('No active tab found');
+                    }
+                } catch (tabError) {
+                    console.error('Error processing tabs:', tabError);
+                    showError('Unable to access current tab');
+                }
+            });
+        } catch (queryError) {
+            console.error('Error querying tabs:', queryError);
+            showError('Unable to access browser tabs');
+        }
+        
+        // Listen for messages from content script with enhanced error handling
+        try {
+            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+                try {
+                    if (message && message.action) {
+                        if (message.action === 'analysisComplete') {
+                            console.log('Analysis complete received:', message.analysis);
+                            currentAnalysis = message.analysis;
+                            try {
+                                displayAnalysis(currentAnalysis);
+                            } catch (displayError) {
+                                console.error('Error displaying analysis:', displayError);
+                                showError('Error displaying analysis results');
+                            }
+                        } else if (message.action === 'analysisError') {
+                            console.error('Analysis error received:', message.error);
+                            try {
+                                showError(`Analysis failed: ${message.error}`);
+                            } catch (showError) {
+                                console.error('Error showing error message:', showError);
+                            }
+                        } else if (message.action === 'privacyLinksFound') {
+                            console.log('Privacy links found:', message.links);
+                            privacyLinks = message.links || [];
+                            try {
+                                displayPrivacyLinks(privacyLinks);
+                            } catch (displayError) {
+                                console.error('Error displaying privacy links:', displayError);
+                            }
+                        }
+                    }
+                } catch (messageError) {
+                    console.error('Error in popup message listener:', messageError);
+                    try {
+                        showError('Error processing analysis results');
+                    } catch (showError) {
+                        console.error('Error showing error message:', showError);
+                    }
+                }
+            });
+        } catch (listenerError) {
+            console.error('Error setting up message listener:', listenerError);
+        }
+        
+        // Add timeout for analysis with error handling
+        try {
+            setTimeout(() => {
+                try {
+                    const loadingElement = document.getElementById('loading');
+                    if (loadingElement && loadingElement.style.display !== 'none') {
+                        console.log('Analysis timeout, showing error');
+                        showError('Analysis timed out. Please try again.');
+                    }
+                } catch (timeoutError) {
+                    console.error('Error in timeout handler:', timeoutError);
+                }
+            }, 10000); // 10 second timeout
+        } catch (timeoutError) {
+            console.error('Error setting timeout:', timeoutError);
+        }
+    } catch (initError) {
+        console.error('Critical error in popup initialization:', initError);
+        // Try to show error message
+        try {
+            const errorElement = document.getElementById('error');
+            const errorMessageElement = document.getElementById('error-message');
+            if (errorElement) errorElement.style.display = 'block';
+            if (errorMessageElement) errorMessageElement.textContent = 'Extension initialization failed';
+        } catch (fallbackError) {
+            console.error('Error in fallback error display:', fallbackError);
+        }
+    }
 });
 
 function checkForAnalysis(tabId) {

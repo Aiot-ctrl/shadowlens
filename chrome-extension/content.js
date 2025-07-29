@@ -29,42 +29,130 @@ function analyzeCurrentPage() {
     try {
         console.log('🔍 Starting page analysis...');
         
-        // Get URL directly from address bar
-        const currentUrl = window.location.href;
-        console.log('🌐 Analyzing URL from address bar:', currentUrl);
+        // Get URL directly from address bar with error handling
+        let currentUrl = '';
+        try {
+            currentUrl = window.location.href;
+            console.log('🌐 Analyzing URL from address bar:', currentUrl);
+        } catch (urlError) {
+            console.error('Error getting URL:', urlError);
+            currentUrl = 'unknown';
+        }
         
-        // Quick analysis for immediate response
-        const pageText = document.body ? document.body.innerText : '';
+        // Quick analysis for immediate response with error handling
+        let pageText = '';
+        try {
+            pageText = document.body ? document.body.innerText : '';
+        } catch (textError) {
+            console.error('Error getting page text:', textError);
+            pageText = '';
+        }
+        
+        // Collect analysis data with individual error handling
         const analysisData = {
             url: currentUrl,
-            text: extractPageText(),
-            forms: extractForms(),
-            riskIndicators: detectRiskIndicators(),
-            websiteType: detectWebsiteType(currentUrl, pageText)
+            text: '',
+            forms: [],
+            riskIndicators: [],
+            websiteType: 'general'
         };
+        
+        // Extract text with error handling
+        try {
+            analysisData.text = extractPageText();
+        } catch (textError) {
+            console.error('Error extracting page text:', textError);
+            analysisData.text = '';
+        }
+        
+        // Extract forms with error handling
+        try {
+            analysisData.forms = extractForms();
+        } catch (formsError) {
+            console.error('Error extracting forms:', formsError);
+            analysisData.forms = [];
+        }
+        
+        // Detect risk indicators with error handling
+        try {
+            analysisData.riskIndicators = detectRiskIndicators();
+        } catch (riskError) {
+            console.error('Error detecting risk indicators:', riskError);
+            analysisData.riskIndicators = [];
+        }
+        
+        // Detect website type with error handling
+        try {
+            analysisData.websiteType = detectWebsiteType(currentUrl, pageText);
+        } catch (typeError) {
+            console.error('Error detecting website type:', typeError);
+            analysisData.websiteType = 'general';
+        }
         
         console.log('📊 Analysis data collected:', analysisData);
         
-        // Perform immediate local analysis
-        const analysis = performLocalAnalysis(analysisData);
-        console.log('✅ Local analysis complete:', analysis);
+        // Perform immediate local analysis with error handling
+        let analysis = null;
+        try {
+            analysis = performLocalAnalysis(analysisData);
+            console.log('✅ Local analysis complete:', analysis);
+        } catch (analysisError) {
+            console.error('Error in local analysis:', analysisError);
+            // Create fallback analysis
+            analysis = {
+                risk_score: 0,
+                recommendation: 'Safe',
+                recommendation_reason: 'Analysis failed due to error',
+                privacy_threats: [],
+                websiteType: 'general',
+                forms: [],
+                detailed_metrics: {},
+                total_threats: 0,
+                critical_threats: 0,
+                features_used: ['Error Recovery'],
+                summary: 'Analysis failed due to error',
+                student_summary: 'Unable to analyze this website',
+                detailed_analysis: {}
+            };
+        }
+        
         currentAnalysis = analysis;
         
-        // Save to Chrome storage for dashboard
-        saveAnalysisToStorage(analysis);
+        // Save to Chrome storage with error handling
+        try {
+            saveAnalysisToStorage(analysis);
+        } catch (storageError) {
+            console.error('Error saving to storage:', storageError);
+        }
         
-        // Notify popup immediately
-        chrome.runtime.sendMessage({
-            action: 'analysisComplete',
-            analysis: analysis
-        });
+        // Notify popup with error handling
+        try {
+            chrome.runtime.sendMessage({
+                action: 'analysisComplete',
+                analysis: analysis
+            }, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error('Error sending analysis to popup:', chrome.runtime.lastError);
+                }
+            });
+        } catch (messageError) {
+            console.error('Error sending message to popup:', messageError);
+        }
     } catch (error) {
-        console.error('Error in analyzeCurrentPage:', error);
-        // Send error to popup
-        chrome.runtime.sendMessage({
-            action: 'analysisError',
-            error: error.message
-        });
+        console.error('Critical error in analyzeCurrentPage:', error);
+        // Send error to popup with error handling
+        try {
+            chrome.runtime.sendMessage({
+                action: 'analysisError',
+                error: error.message || 'Unknown error occurred'
+            }, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error('Error sending error to popup:', chrome.runtime.lastError);
+                }
+            });
+        } catch (sendError) {
+            console.error('Error sending error message:', sendError);
+        }
     }
 }
 
