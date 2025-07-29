@@ -387,15 +387,15 @@ def extract_data_from_soup(soup, url):
     
     # Extract comprehensive text content
     text_elements = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'span', 'li', 'a', 'button', 'label', 'title', 'meta'])
-    text = ' '.join([elem.get_text().strip() for elem in text_elements if elem.get_text().strip()])
+    text = ' '.join([elem.get_text().strip() for elem in text_elements if elem and elem.get_text() and elem.get_text().strip()])
     
     # Also extract meta descriptions and titles
     meta_description = soup.find('meta', attrs={'name': 'description'})
-    if meta_description:
+    if meta_description and meta_description.get('content'):
         text += ' ' + meta_description.get('content', '')
     
     title = soup.find('title')
-    if title:
+    if title and title.get_text():
         text += ' ' + title.get_text()
     
     text = text[:8000]  # Increased limit for comprehensive analysis
@@ -467,34 +467,14 @@ def extract_data_from_soup(soup, url):
                 'risk': 'high'
             })
     
-    # Website type detection
-    website_type = detect_website_type(url, text, forms)
-    
-    # Website verification detection
-    verification_data = detect_website_verification(url, text, soup)
-    verification_status, verification_description = get_verification_summary(verification_data)
-    
-    scraped_data = {
+    # Return basic extracted data
+    return {
         'url': url,
         'forms': forms,
         'text': text,
         'images': images,
-        'riskIndicators': risk_indicators,
-        'websiteType': website_type[0], # Store only the type
-        'verification': verification_data,
-        'verificationStatus': verification_status,
-        'verificationDescription': verification_description
+        'riskIndicators': risk_indicators
     }
-    
-    print(f"✅ Scraping complete!")
-    print(f"   📝 Forms found: {len(forms)}")
-    print(f"   📄 Text length: {len(text)} characters")
-    print(f"   🖼️ Images found: {len(images)}")
-    print(f"   ⚠️ Risk indicators: {len(risk_indicators)}")
-    print(f"   🌐 Website type: {website_type[0]}")
-    print(f"   ✅ Verification: {verification_status} - {verification_description}")
-    
-    return scraped_data
 
 def detect_website_type(url, text, forms):
     """Detect website type and provide short description"""
@@ -654,6 +634,45 @@ def get_verification_summary(verification_data):
     else:
         return "Unverified", "No verification indicators detected"
 
+def detect_unverified_website(url):
+    """Detect if website is unverified or duplicate based on URL patterns"""
+    url_lower = url.lower()
+    
+    # Suspicious URL patterns
+    suspicious_patterns = [
+        'clickid=', 'subid=', 'src=', 'src2=', 'fbclid=',
+        'utm_source=', 'utm_medium=', 'utm_campaign=',
+        'ref=', 'referrer=', 'affiliate=', 'partner=',
+        'tracking=', 'analytics=', 'monitor=',
+        'redirect=', 'forward=', 'proxy=',
+        'duplicate', 'copy', 'mirror', 'clone'
+    ]
+    
+    # Check for suspicious patterns
+    for pattern in suspicious_patterns:
+        if pattern in url_lower:
+            return True, f"URL contains suspicious tracking parameter: {pattern}"
+    
+    # Check for very long URLs (often indicate tracking)
+    if len(url) > 200:
+        return True, "URL is excessively long (likely contains tracking parameters)"
+    
+    # Check for multiple query parameters (suspicious)
+    if url.count('?') > 1 or url.count('&') > 5:
+        return True, "URL contains excessive query parameters (suspicious tracking)"
+    
+    # Check for common unverified domain patterns
+    unverified_domains = [
+        'ageful.com', 'clickbank', 'commission', 'affiliate',
+        'tracking', 'monitor', 'analytics', 'redirect'
+    ]
+    
+    for domain in unverified_domains:
+        if domain in url_lower:
+            return True, f"Domain contains unverified patterns: {domain}"
+    
+    return False, "URL appears legitimate"
+
 def analyze_with_backend(scraped_data):
     """Send scraped data to backend for AI analysis"""
     print(f"\n🧠 Analyzing with AI Backend")
@@ -708,9 +727,11 @@ def save_to_chrome_storage(url, analysis_result, scraped_data):
             'riskScore': analysis_result.get('risk_score', 0),
             'recommendation': analysis_result.get('recommendation', 'Unknown'),
             'privacyThreats': analysis_result.get('privacy_threats', []),
-                           'forms': len(scraped_data.get('forms', [])),
-               'sensitiveFields': sum(1 for form in scraped_data.get('forms', []) 
-                                   for field in form.get('fields', []) if field.get('sensitive', False)),
+                                       'forms': len(scraped_data.get('forms', [])),
+            'sensitiveFields': sum(1 for form in scraped_data.get('forms', []) 
+                                if form and 'fields' in form
+                                for field in form.get('fields', []) 
+                                if field and field.get('sensitive', False)),
                'websiteType': scraped_data.get('websiteType', 'general'),
                'verificationStatus': scraped_data.get('verificationStatus', 'Unknown'),
                'verificationScore': scraped_data.get('verification', {}).get('verification_score', 0),
@@ -724,27 +745,27 @@ def save_to_chrome_storage(url, analysis_result, scraped_data):
         storage_file = 'dashboard_data.json'
         
         # Load existing data if file exists
-        existing_data = []
+        existing_data = {"websiteHistory": []}
         if os.path.exists(storage_file):
             try:
                 with open(storage_file, 'r') as f:
                     existing_data = json.load(f)
             except:
-                existing_data = []
+                existing_data = {"websiteHistory": []}
         
         # Add new data to beginning
-        existing_data.insert(0, storage_data)
+        existing_data["websiteHistory"].insert(0, storage_data)
         
         # Keep only last 100 entries
-        if len(existing_data) > 100:
-            existing_data = existing_data[:100]
+        if len(existing_data["websiteHistory"]) > 100:
+            existing_data["websiteHistory"] = existing_data["websiteHistory"][:100]
         
         # Save to file
         with open(storage_file, 'w') as f:
             json.dump(existing_data, f, indent=2)
         
         print(f"💾 Analysis saved to {storage_file} for dashboard import")
-        print(f"📊 Dashboard will show {len(existing_data)} total analyses")
+        print(f"📊 Dashboard will show {len(existing_data['websiteHistory'])} total analyses")
         
     except Exception as e:
         print(f"⚠️ Could not save to storage: {e}")
@@ -791,9 +812,9 @@ def show_detailed_results(scraped_data, analysis_result):
     
     # SSL Certificate
     if verification_data.get('ssl_certificate'):
-        print(f"   🔒 SSL Certificate: ✅ Present (HTTPS)")
+        print(f"   🔒 SSL Certificate (Secure Sockets Layer): ✅ Present (HTTPS)")
     else:
-        print(f"   🔒 SSL Certificate: ❌ Missing (HTTP only)")
+        print(f"   🔒 SSL Certificate (Secure Sockets Layer): ❌ Missing (HTTP only)")
     
     # ISO Certifications
     iso_certs = verification_data.get('iso_certifications', [])
@@ -1006,28 +1027,77 @@ def main():
     print()
     
     # Step 1: Scrape the website
-    scraped_data = scrape_website(url)
+    try:
+        scraped_data = scrape_website(url)
+        
+        if not scraped_data:
+            # Check if it's an unverified/duplicate website
+            is_unverified, reason = detect_unverified_website(url)
+            if is_unverified:
+                print(f"🚨 UNVERIFIED WEBSITE DETECTED!")
+                print(f"❌ Reason: {reason}")
+                print(f"🛡️ Risk Assessment: HIGH RISK - Unverified/Duplicate Website")
+                print(f"📋 Recommendation: AVOID - This website appears to be unverified or contains suspicious tracking parameters")
+                print(f"🔒 Privacy Threat: Potential data collection without proper verification")
+                return
+            else:
+                print("❌ Failed to scrape website. Please check the URL and try again.")
+                return
+            
+    except Exception as e:
+        print(f"❌ Scraping error: {e}")
+        # Check if it's an unverified website even when scraping fails
+        is_unverified, reason = detect_unverified_website(url)
+        if is_unverified:
+            print(f"🚨 UNVERIFIED WEBSITE DETECTED!")
+            print(f"❌ Reason: {reason}")
+            print(f"🛡️ Risk Assessment: HIGH RISK - Unverified/Duplicate Website")
+            print(f"📋 Recommendation: AVOID - This website appears to be unverified or contains suspicious tracking parameters")
+            print(f"🔒 Privacy Threat: Potential data collection without proper verification")
+            return
+        else:
+            print("❌ Failed to scrape website. Please check the URL and try again.")
+            return
     
-    if not scraped_data:
-        print("❌ Failed to scrape website. Please check the URL and try again.")
-        return
+    # Step 2: Detect website type and verification
+    website_type, website_description = detect_website_type(url, scraped_data['text'], scraped_data['forms'])
     
-    # Step 2: Analyze with backend
+    # Create a simple soup object for verification detection
+    from bs4 import BeautifulSoup
+    verification_soup = BeautifulSoup('<html><body></body></html>', 'html.parser')
+    verification_data = detect_website_verification(url, scraped_data['text'], verification_soup)
+    verification_status, verification_description = get_verification_summary(verification_data)
+    
+    # Add verification data to scraped_data
+    scraped_data['websiteType'] = website_type
+    scraped_data['websiteDescription'] = website_description
+    scraped_data['verification'] = verification_data
+    scraped_data['verificationStatus'] = verification_status
+    scraped_data['verificationDescription'] = verification_description
+    
+    # Step 3: Analyze with backend
     analysis_result = analyze_with_backend(scraped_data)
     
-    # Step 3: Save to dashboard storage
+    # Step 4: Save to dashboard storage
     if analysis_result:
         save_to_chrome_storage(url, analysis_result, scraped_data)
     
-    # Step 4: Show detailed results
+    # Step 5: Show detailed results
     show_detailed_results(scraped_data, analysis_result)
     
-    # Step 5: Summary
+    # Step 6: Summary
     print(f"\n🎯 Summary:")
     print(f"   Website: {url}")
     print(f"   Risk Level: {analysis_result.get('recommendation', 'Unknown') if analysis_result else 'Analysis Failed'}")
-    print(f"   Sensitive Fields: {sum(sum(1 for field in form['fields'] if field['sensitive']) for form in scraped_data['forms'])}")
-    print(f"   Risk Indicators: {len(scraped_data['riskIndicators'])}")
+    
+    # Safely calculate sensitive fields
+    sensitive_fields_count = 0
+    for form in scraped_data.get('forms', []):
+        if form and 'fields' in form:
+            sensitive_fields_count += sum(1 for field in form['fields'] if field.get('sensitive', False))
+    
+    print(f"   Sensitive Fields: {sensitive_fields_count}")
+    print(f"   Risk Indicators: {len(scraped_data.get('riskIndicators', []))}")
     
     print(f"\n🔒 ShadowLens Analysis Complete!")
     print("=" * 60)

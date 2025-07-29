@@ -65,7 +65,7 @@ class ShadowLensAI:
             'consent', 'legitimate interest', 'data protection officer',
             'privacy by design', 'data minimization', 'purpose limitation'
         ]
-
+    
     def init_gemini(self):
         """Initialize Gemini AI model with fallback options"""
         try:
@@ -79,12 +79,12 @@ class ShadowLensAI:
                     self.gemini_model = genai.GenerativeModel('gemini-1.0-pro')
                     logger.info("✅ Gemini 1.0 Pro initialized successfully")
                 except:
-                    self.gemini_model = genai.GenerativeModel('gemini-pro')
-                    logger.info("✅ Gemini Pro initialized successfully")
+            self.gemini_model = genai.GenerativeModel('gemini-pro')
+            logger.info("✅ Gemini Pro initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
             self.gemini_model = None
-
+    
     def detect_deception(self, text):
         """Detect deceptive or ambiguous language in privacy policies"""
         deception_indicators = []
@@ -165,7 +165,7 @@ class ShadowLensAI:
         """Enhanced AI analysis with deception detection and compliance checking"""
         if not self.gemini_model:
             return self.fallback_analysis(data)
-        
+    
         try:
             text = data.get('text', '')
             url = data.get('url', '')
@@ -199,7 +199,7 @@ class ShadowLensAI:
             
             response = self.gemini_model.generate_content(prompt)
             
-            try:
+        try:
                 # Try to parse JSON response
                 result = json.loads(response.text)
                 return result
@@ -210,7 +210,7 @@ class ShadowLensAI:
         except Exception as e:
             logger.error(f"Gemini analysis failed: {e}")
             return self.fallback_analysis(data)
-
+    
     def extract_ai_analysis(self, ai_text, data):
         """Extract analysis from AI text response"""
         # Extract risk score
@@ -218,8 +218,8 @@ class ShadowLensAI:
         if 'risk_score' in ai_text.lower():
             try:
                 score_match = re.search(r'risk_score[:\s]*(\d+)', ai_text.lower())
-                if score_match:
-                    risk_score = int(score_match.group(1))
+            if score_match:
+                risk_score = int(score_match.group(1))
             except:
                 pass
         
@@ -271,7 +271,7 @@ class ShadowLensAI:
             red_flags.append("Marketing use of data")
         
         return red_flags
-
+    
     def fallback_analysis(self, data):
         """Enhanced fallback analysis with all features"""
         text = data.get('text', '').lower()
@@ -447,7 +447,7 @@ def compliance_check():
         ferpa_issues = ai_analyzer.check_ferpa_compliance(text)
         gdpr_issues = ai_analyzer.check_gdpr_compliance(text)
         
-        return jsonify({
+    return jsonify({
             'ferpa_compliance': ferpa_issues,
             'gdpr_compliance': gdpr_issues,
             'ferpa_issues_count': len(ferpa_issues),

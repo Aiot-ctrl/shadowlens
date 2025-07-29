@@ -5,96 +5,62 @@ let currentAnalysis = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔒 ShadowLens Content Script: Initializing...');
     
-    // Auto-detect legal documents and trigger analysis
-    autoDetectLegalDocuments();
+    // Get current URL from address bar and analyze
+    const currentUrl = window.location.href;
+    console.log('🌐 Current URL from address bar:', currentUrl);
     
-    // Find privacy policy links on non-legal pages
-    if (!isLegalDocument(window.location.href)) {
-        findPrivacyPolicyLinks();
-    }
+    // Analyze immediately for faster response
+    analyzeCurrentPage();
 });
 
-function autoDetectLegalDocuments() {
-    const currentUrl = window.location.href.toLowerCase();
-    const pageText = document.body.innerText.toLowerCase();
-    
-    // Check if current page is a legal document
-    const legalIndicators = ['privacy', 'terms', 'policy', 'legal', 'conditions'];
-    const isLegal = legalIndicators.some(indicator => 
-        currentUrl.includes(indicator) || pageText.includes(indicator)
-    );
-    
-    if (isLegal) {
-        console.log('📋 Legal document detected, triggering analysis...');
+// Simple URL change detection
+let lastUrl = window.location.href;
+new MutationObserver(() => {
+    const url = window.location.href;
+    if (url !== lastUrl) {
+        lastUrl = url;
         analyzeCurrentPage();
     }
-}
+}).observe(document, {subtree: true, childList: true});
 
-function findPrivacyPolicyLinks() {
-    const privacyLinks = [];
-    const links = document.querySelectorAll('a[href*="privacy"], a[href*="terms"], a[href*="policy"]');
-    
-    links.forEach(link => {
-        const href = link.href.toLowerCase();
-        const text = link.textContent.toLowerCase();
-        
-        if (href.includes('privacy') || href.includes('terms') || href.includes('policy') ||
-            text.includes('privacy') || text.includes('terms') || text.includes('policy')) {
-            privacyLinks.push({
-                href: link.href,
-                text: link.textContent.trim(),
-                type: getLinkType(href, text)
-            });
-        }
-    });
-    
-    if (privacyLinks.length > 0) {
-        console.log('🔍 Privacy policy links found:', privacyLinks);
-        notifyPrivacyLinksFound(privacyLinks);
-    }
-}
-
-function getLinkType(href, text) {
-    if (href.includes('privacy') || text.includes('privacy')) return 'Privacy Policy';
-    if (href.includes('terms') || text.includes('terms')) return 'Terms of Service';
-    if (href.includes('policy') || text.includes('policy')) return 'Policy';
-    return 'Legal Document';
-}
-
-function notifyPrivacyLinksFound(links) {
-    chrome.runtime.sendMessage({
-        action: 'privacyLinksFound',
-        links: links
-    });
-}
-
-function isLegalDocument(url) {
-    const legalPatterns = ['privacy', 'terms', 'policy', 'legal', 'conditions'];
-    return legalPatterns.some(pattern => url.toLowerCase().includes(pattern));
-}
+// Removed unused functions for cleaner code
 
 function analyzeCurrentPage() {
     console.log('🔍 Starting page analysis...');
     
+    // Get URL directly from address bar
+    const currentUrl = window.location.href;
+    console.log('🌐 Analyzing URL from address bar:', currentUrl);
+    
+    // Quick analysis for immediate response
     const analysisData = {
-        url: window.location.href,
+        url: currentUrl,
         text: extractPageText(),
         forms: extractForms(),
-        images: extractImages(),
         riskIndicators: detectRiskIndicators(),
-        websiteType: detectWebsiteType(window.location.href, document.body.innerText),
-        isLegalDocument: isLegalDocument(window.location.href),
-        documentType: detectDocumentType(window.location.href, document.body.innerText)
+        websiteType: detectWebsiteType(currentUrl, document.body.innerText)
     };
     
     console.log('📊 Analysis data collected:', analysisData);
     
-    // Send to backend for analysis
-    sendToBackend(analysisData);
+    // Perform immediate local analysis
+    const analysis = performLocalAnalysis(analysisData);
+    console.log('✅ Local analysis complete:', analysis);
+    currentAnalysis = analysis;
+    
+    // Save to Chrome storage for dashboard
+    saveAnalysisToStorage(analysis);
+    
+    // Notify popup immediately
+    chrome.runtime.sendMessage({
+        action: 'analysisComplete',
+        analysis: analysis
+    });
 }
 
 function extractPageText() {
-    const textElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span, div, a, button, label, title, meta');
+    // Faster text extraction - only key elements
+    const textElements = document.querySelectorAll('p, h1, h2, h3, title, meta[name="description"]');
     let text = '';
     
     textElements.forEach(element => {
@@ -103,19 +69,18 @@ function extractPageText() {
         }
     });
     
-    // Limit text length to avoid API issues
-    return text.substring(0, 15000);
+    return text.substring(0, 2000); // Shorter text for faster processing
 }
 
 function extractForms() {
-    const forms = [];
-    const formElements = document.querySelectorAll('form');
-    
-    formElements.forEach((form, index) => {
-        const fields = [];
-        const inputs = form.querySelectorAll('input, select, textarea');
+        const forms = [];
+        const formElements = document.querySelectorAll('form');
         
-        inputs.forEach(input => {
+    formElements.forEach((form, index) => {
+            const fields = [];
+        const inputs = form.querySelectorAll('input, select, textarea');
+            
+            inputs.forEach(input => {
             const field = {
                 name: input.name || input.id || `field_${index}`,
                 type: input.type || input.tagName.toLowerCase(),
@@ -129,13 +94,13 @@ function extractForms() {
             method: form.method || 'get',
             fields: fields
         });
-    });
-    
-    return forms;
-}
+        });
+        
+        return forms;
+    }
 
 function isSensitiveField(input) {
-    const sensitivePatterns = [
+        const sensitivePatterns = [
         'password', 'passwd', 'pwd', 'secret', 'key',
         'ssn', 'social', 'security', 'id', 'passport',
         'card', 'credit', 'payment', 'paypal', 'stripe',
@@ -151,69 +116,37 @@ function isSensitiveField(input) {
 }
 
 function extractImages() {
-    const images = [];
-    const imgElements = document.querySelectorAll('img');
-    
-    imgElements.forEach(img => {
+        const images = [];
+        const imgElements = document.querySelectorAll('img');
+        
+        imgElements.forEach(img => {
         if (img.src) {
-            images.push({
+                images.push({
                 src: img.src,
-                alt: img.alt || '',
+                    alt: img.alt || '',
                 width: img.width || 0,
                 height: img.height || 0
-            });
-        }
-    });
-    
-    return images;
-}
+                });
+            }
+        });
+        
+        return images;
+    }
 
 function detectRiskIndicators() {
     const indicators = [];
     const text = document.body.innerText.toLowerCase();
     
-    // Privacy terms
+    // High-risk privacy terms only
     const privacyTerms = [
-        'privacy policy', 'data collection', 'cookies', 'tracking',
-        'personal information', 'user data', 'analytics', 'marketing'
+        'sell your data', 'data brokers', 'third party advertising',
+        'social security number', 'ssn', 'government id'
     ];
     
     privacyTerms.forEach(term => {
         if (text.includes(term)) {
             indicators.push({
                 type: 'privacy_term',
-                term: term,
-                risk: 'high'
-            });
-        }
-    });
-    
-    // Concerning legal terms
-    const legalTerms = [
-        'disclaim all liability', 'not responsible', 'use at your own risk',
-        'no warranty', 'as is', 'without limitation', 'broad rights'
-    ];
-    
-    legalTerms.forEach(term => {
-        if (text.includes(term)) {
-            indicators.push({
-                type: 'concerning_legal_term',
-                term: term,
-                risk: 'high'
-            });
-        }
-    });
-    
-    // Data sharing terms
-    const sharingTerms = [
-        'share with third parties', 'sell your data', 'data brokers',
-        'advertising partners', 'marketing partners'
-    ];
-    
-    sharingTerms.forEach(term => {
-        if (text.includes(term)) {
-            indicators.push({
-                type: 'data_sharing',
                 term: term,
                 risk: 'high'
             });
@@ -231,7 +164,7 @@ function detectWebsiteType(url, text) {
     if (urlLower.includes('facebook') || urlLower.includes('instagram') || 
         urlLower.includes('twitter') || urlLower.includes('linkedin')) {
         return 'social_media';
-    }
+            }
     
     // Educational detection
     if (urlLower.includes('coursera') || urlLower.includes('edx') || 
@@ -247,7 +180,7 @@ function detectWebsiteType(url, text) {
         textLower.includes('credit') || textLower.includes('financial')) {
         return 'financial';
     }
-    
+
     // E-commerce detection
     if (urlLower.includes('amazon') || urlLower.includes('ebay') || 
         urlLower.includes('shop') || textLower.includes('buy') ||
@@ -277,35 +210,60 @@ function detectDocumentType(url, text) {
     return 'general';
 }
 
-function sendToBackend(data) {
-    fetch('http://localhost:5000/analyze', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(result => {
-        console.log('✅ Analysis complete:', result);
-        currentAnalysis = result;
-        
-        // Save to Chrome storage for dashboard
-        saveAnalysisToStorage(result);
-        
-        // Notify popup
-        chrome.runtime.sendMessage({
-            action: 'analysisComplete',
-            analysis: result
-        });
-    })
-    .catch(error => {
-        console.error('❌ Analysis failed:', error);
-        chrome.runtime.sendMessage({
-            action: 'analysisError',
-            error: error.message
-        });
+// Removed sendToBackend function - using direct local analysis
+
+function performLocalAnalysis(data) {
+    const riskIndicators = data.riskIndicators || [];
+    const forms = data.forms || [];
+    const websiteType = data.websiteType || 'general';
+    
+    // Simple risk calculation
+    let riskScore = 0;
+    let privacyThreats = [];
+    
+    // Base score by website type
+    switch(websiteType) {
+        case 'social_media': riskScore = 4; break;
+        case 'financial': riskScore = 5; break;
+        case 'ecommerce': riskScore = 3; break;
+        case 'educational': riskScore = 2; break;
+        default: riskScore = 1;
+    }
+    
+    // Add points for risk indicators
+    riskIndicators.forEach(indicator => {
+        if (indicator.type === 'privacy_term') {
+            riskScore += 2;
+            privacyThreats.push(`Privacy term found: ${indicator.term}`);
+        }
     });
+    
+    // Add points for sensitive forms
+    const sensitiveFields = forms.reduce((sum, form) => 
+        sum + (form.fields ? form.fields.filter(f => f.sensitive).length : 0), 0);
+    if (sensitiveFields > 0) riskScore += Math.min(sensitiveFields, 2);
+    
+    // Cap risk score
+    riskScore = Math.min(riskScore, 10);
+    
+    // Determine recommendation
+    let recommendation = 'Safe';
+    if (riskScore >= 8) recommendation = 'Dangerous';
+    else if (riskScore >= 6) recommendation = 'Caution';
+    else if (riskScore >= 4) recommendation = 'Moderate';
+    
+    return {
+        risk_score: riskScore,
+        recommendation: recommendation,
+        privacy_threats: privacyThreats,
+        websiteType: websiteType,
+        forms: forms,
+        features_used: ['Privacy Analysis'],
+        summary: `Analysis of ${websiteType} website with ${privacyThreats.length} privacy threats detected`,
+        student_summary: riskScore <= 3 ? 'This website appears to have good privacy practices' : 
+                        riskScore <= 5 ? 'This website has some privacy concerns to be aware of' :
+                        'This website has significant privacy concerns - proceed with caution'
+    };
 }
 
 function saveAnalysisToStorage(analysis) {
@@ -329,12 +287,12 @@ function saveAnalysisToStorage(analysis) {
         
         // Add to beginning of history
         history.unshift(newEntry);
-        
+            
         // Keep only last 100 entries
         if (history.length > 100) {
             history = history.slice(0, 100);
-        }
-        
+            }
+            
         // Save to storage
         chrome.storage.local.set({ websiteHistory: history }, function() {
             console.log('💾 Analysis saved to storage');
@@ -349,6 +307,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'analyzeCurrentPage') {
         analyzeCurrentPage();
         sendResponse({ status: 'analysis_started' });
+    } else if (message.action === 'getCurrentUrl') {
+        // Get URL directly from address bar
+        const currentUrl = window.location.href;
+        console.log('🌐 Getting URL from address bar:', currentUrl);
+        sendResponse({ url: currentUrl });
     }
 });
 

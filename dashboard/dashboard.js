@@ -32,8 +32,8 @@ function loadWebsiteHistory() {
             }
         })
         .then(data => {
-            if (data && data.length > 0) {
-                websiteHistory = data;
+            if (data && data.websiteHistory && data.websiteHistory.length > 0) {
+                websiteHistory = data.websiteHistory;
                 displayWebsites();
                 updateStats();
                 console.log('✅ Loaded real data from JSON file');

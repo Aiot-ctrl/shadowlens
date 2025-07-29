@@ -15,15 +15,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('Background received message:', request);
     
     if (request.action === 'updateBadge') {
-        updateBadge(request.riskScore);
+            updateBadge(request.riskScore);
         sendResponse({ success: true });
     } else if (request.action === 'getAnalysis') {
         // Forward to content script
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
                 chrome.tabs.sendMessage(tabs[0].id, request, sendResponse);
-            }
-        });
+    }
+});
         return true; // Keep message channel open for async response
     }
 });
@@ -91,5 +91,5 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
         console.log('🔒 ShadowLens: Storage changed:', changes);
-    }
+        }
 }); 

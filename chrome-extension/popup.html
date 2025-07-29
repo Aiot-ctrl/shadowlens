@@ -245,12 +245,13 @@
     <div class="header">
         <h1>🔒 ShadowLens</h1>
         <p>Enhanced Privacy Guardian for Educational Websites</p>
+        <div id="current-url" style="font-size: 10px; margin-top: 5px; opacity: 0.7; word-break: break-all; max-width: 100%;"></div>
     </div>
 
     <div id="loading" class="loading">
         <div class="spinner"></div>
         <p>Analyzing current page...</p>
-    </div>
+        </div>
 
     <div id="error" class="error" style="display: none;">
         <h3>⚠️ Analysis Error</h3>
@@ -289,33 +290,7 @@
                     </div>
                 </div>
 
-                <div class="detail-section">
-                    <div class="section-title">🎭 Deception Detection</div>
-                    <div id="deception-indicators" class="threat-list">
-                        <div class="detail-item">No deceptive practices detected</div>
-                    </div>
-                </div>
 
-                <div class="detail-section">
-                    <div class="section-title">⚖️ FERPA Compliance</div>
-                    <div id="ferpa-compliance" class="threat-list">
-                        <div class="detail-item">No FERPA issues detected</div>
-                    </div>
-                </div>
-
-                <div class="detail-section">
-                    <div class="section-title">🌍 GDPR Compliance</div>
-                    <div id="gdpr-compliance" class="threat-list">
-                        <div class="detail-item">No GDPR issues detected</div>
-                    </div>
-                </div>
-
-                <div class="detail-section">
-                    <div class="section-title">🚨 Legal Concerns</div>
-                    <div id="legal-concerns" class="threat-list">
-                        <div class="detail-item">No legal concerns detected</div>
-                    </div>
-                </div>
 
                 <div class="detail-section">
                     <div class="section-title">📝 Form Analysis</div>
@@ -327,7 +302,7 @@
         <div id="privacy-links" class="privacy-links" style="display: none;">
             <div class="section-title">🔍 Privacy Policy Links Found</div>
             <div id="links-list"></div>
-        </div>
+    </div>
 
         <div class="action-buttons">
             <button class="btn" onclick="refreshAnalysis()">🔄 Refresh</button>

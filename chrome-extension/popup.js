@@ -6,14 +6,25 @@ let privacyLinks = [];
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔒 ShadowLens Popup: Initializing Enhanced Features...');
     
-    // Get current tab
+    // Show loading state
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('analysis').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    
+    // Get current tab and trigger analysis
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         if (tabs[0]) {
             const currentTab = tabs[0];
-            console.log('Current tab:', currentTab.url);
+            console.log('🌐 Current tab URL from address bar:', currentTab.url);
             
-            // Check if we have analysis results
-            checkForAnalysis(currentTab.id);
+            // Show the URL immediately
+            const urlElement = document.getElementById('current-url');
+            if (urlElement) {
+                urlElement.textContent = currentTab.url;
+            }
+            
+            // Always trigger fresh analysis
+            triggerAnalysis(currentTab.id);
         }
     });
     
@@ -39,9 +50,9 @@ function checkForAnalysis(tabId) {
             currentAnalysis = response.analysis;
             displayAnalysis(currentAnalysis);
         } else {
-            // No analysis yet, trigger one
-            console.log('No analysis found, triggering new analysis...');
-            triggerAnalysis(tabId);
+            // No analysis found, show error
+            console.log('No analysis found');
+            showError('Analysis not available for this page');
         }
     });
 }
@@ -53,8 +64,14 @@ function triggerAnalysis(tabId) {
             showError(response.error);
         } else if (response) {
             console.log('Analysis triggered:', response);
-            currentAnalysis = response;
-            displayAnalysis(currentAnalysis);
+            
+            // Check for results immediately
+            setTimeout(() => {
+                checkForAnalysis(tabId);
+            }, 1000); // Reduced wait time
+        } else {
+            console.log('No response from content script');
+            showError('Unable to analyze this page');
         }
     });
 }
@@ -64,6 +81,16 @@ function displayAnalysis(analysis) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error').style.display = 'none';
     document.getElementById('analysis').style.display = 'block';
+    
+    // Display current URL from address bar
+    const currentUrl = analysis.url || 'Unknown URL';
+    console.log('🌐 Displaying analysis for URL from address bar:', currentUrl);
+    
+    // Show the URL in the popup
+    const urlElement = document.getElementById('current-url');
+    if (urlElement) {
+        urlElement.textContent = currentUrl;
+    }
     
     // Display risk score
     const riskScore = analysis.risk_score || 0;
@@ -129,70 +156,6 @@ function displayAnalysis(analysis) {
         threatsContainer.innerHTML = '<div class="detail-item">No privacy threats detected</div>';
     }
     
-    // Display deception indicators
-    const deceptionIndicators = analysis.deception_indicators || [];
-    const deceptionContainer = document.getElementById('deception-indicators');
-    
-    if (deceptionIndicators.length > 0) {
-        deceptionContainer.innerHTML = '';
-        deceptionIndicators.forEach(indicator => {
-            const indicatorElement = document.createElement('div');
-            indicatorElement.className = 'deception-item';
-            indicatorElement.textContent = `${indicator.type}: ${indicator.pattern} (${indicator.matches} matches)`;
-            deceptionContainer.appendChild(indicatorElement);
-        });
-    } else {
-        deceptionContainer.innerHTML = '<div class="detail-item">No deceptive practices detected</div>';
-    }
-    
-    // Display FERPA compliance issues
-    const ferpaIssues = analysis.ferpa_compliance || [];
-    const ferpaContainer = document.getElementById('ferpa-compliance');
-    
-    if (ferpaIssues.length > 0) {
-        ferpaContainer.innerHTML = '';
-        ferpaIssues.forEach(issue => {
-            const issueElement = document.createElement('div');
-            issueElement.className = 'compliance-item';
-            issueElement.textContent = issue;
-            ferpaContainer.appendChild(issueElement);
-        });
-    } else {
-        ferpaContainer.innerHTML = '<div class="detail-item">No FERPA issues detected</div>';
-    }
-    
-    // Display GDPR compliance issues
-    const gdprIssues = analysis.gdpr_compliance || [];
-    const gdprContainer = document.getElementById('gdpr-compliance');
-    
-    if (gdprIssues.length > 0) {
-        gdprContainer.innerHTML = '';
-        gdprIssues.forEach(issue => {
-            const issueElement = document.createElement('div');
-            issueElement.className = 'compliance-item';
-            issueElement.textContent = issue;
-            gdprContainer.appendChild(issueElement);
-        });
-    } else {
-        gdprContainer.innerHTML = '<div class="detail-item">No GDPR issues detected</div>';
-    }
-    
-    // Display legal concerns (red flags)
-    const redFlags = analysis.red_flags || [];
-    const legalContainer = document.getElementById('legal-concerns');
-    
-    if (redFlags.length > 0) {
-        legalContainer.innerHTML = '';
-        redFlags.forEach(flag => {
-            const flagElement = document.createElement('div');
-            flagElement.className = 'threat-item';
-            flagElement.textContent = flag;
-            legalContainer.appendChild(flagElement);
-        });
-    } else {
-        legalContainer.innerHTML = '<div class="detail-item">No legal concerns detected</div>';
-    }
-    
     // Display form analysis
     const forms = analysis.forms || [];
     const totalFields = forms.reduce((count, form) => count + (form.fields ? form.fields.length : 0), 0);
@@ -230,6 +193,15 @@ function showError(message) {
     document.getElementById('analysis').style.display = 'none';
     document.getElementById('error').style.display = 'block';
     document.getElementById('error-message').textContent = message;
+    
+    // Auto-retry after 5 seconds
+    setTimeout(() => {
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            if (tabs[0]) {
+                triggerAnalysis(tabs[0].id);
+            }
+        });
+    }, 5000);
 }
 
 function retryAnalysis() {
@@ -240,7 +212,7 @@ function retryAnalysis() {
             document.getElementById('analysis').style.display = 'none';
             
             triggerAnalysis(tabs[0].id);
-        }
+            }
     });
 }
 
@@ -277,6 +249,6 @@ window.addEventListener('focus', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         if (tabs[0]) {
             checkForAnalysis(tabs[0].id);
-        }
+    }
     });
 }); 
