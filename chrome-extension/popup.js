@@ -1,65 +1,43 @@
-// ShadowLens Popup JavaScript - Enhanced Features
+// ShadowLens Chrome Extension Popup
 let currentAnalysis = null;
-let privacyLinks = [];
 
-// Initialize popup when opened
 document.addEventListener('DOMContentLoaded', function() {
     try {
-        console.log('🔒 ShadowLens Popup: Initializing Enhanced Features...');
+        console.log('🔒 ShadowLens Popup: Initializing...');
         
-        // Show loading state with null checks
         const loadingElement = document.getElementById('loading');
         const analysisElement = document.getElementById('analysis');
         const errorElement = document.getElementById('error');
         
         if (loadingElement) {
-            try {
-                loadingElement.style.display = 'block';
-            } catch (displayError) {
-                console.error('Error setting loading display:', displayError);
-            }
+            try { loadingElement.style.display = 'block'; } catch (displayError) { console.error('Error setting loading display:', displayError); }
         }
-        
         if (analysisElement) {
-            try {
-                analysisElement.style.display = 'none';
-            } catch (displayError) {
-                console.error('Error setting analysis display:', displayError);
-            }
+            try { analysisElement.style.display = 'none'; } catch (displayError) { console.error('Error setting analysis display:', displayError); }
         }
-        
         if (errorElement) {
-            try {
-                errorElement.style.display = 'none';
-            } catch (displayError) {
-                console.error('Error setting error display:', displayError);
-            }
+            try { errorElement.style.display = 'none'; } catch (displayError) { console.error('Error setting error display:', displayError); }
         }
         
-        // Get current tab and trigger analysis with error handling
         try {
             chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
                 try {
                     if (tabs && tabs[0]) {
-                        const currentTab = tabs[0];
-                        console.log('🌐 Current tab URL from address bar:', currentTab.url);
+                        const currentUrl = tabs[0].url;
+                        console.log('🌐 Current URL:', currentUrl);
                         
-                        // Show the URL immediately with error handling
-                        try {
-                            const urlElement = document.getElementById('current-url');
-                            if (urlElement) {
-                                urlElement.textContent = currentTab.url || 'Unknown URL';
-                            }
-                        } catch (urlError) {
-                            console.error('Error setting URL display:', urlError);
-                        }
+                        // Display current URL
+                        const urlElement = document.getElementById('url-text');
+                        const currentUrlDiv = document.getElementById('current-url');
+                        if (urlElement) urlElement.textContent = currentUrl;
+                        if (currentUrlDiv) currentUrlDiv.classList.remove('hidden');
                         
-                        // Always trigger fresh analysis with error handling
+                        // Trigger analysis
                         try {
-                            triggerAnalysis(currentTab.id);
+                            triggerAnalysis();
                         } catch (triggerError) {
                             console.error('Error triggering analysis:', triggerError);
-                            showError('Unable to start analysis');
+                            showError('Failed to start analysis');
                         }
                     } else {
                         console.error('No active tab found');
@@ -75,51 +53,54 @@ document.addEventListener('DOMContentLoaded', function() {
             showError('Unable to access browser tabs');
         }
         
-        // Listen for messages from content script with enhanced error handling
         try {
             chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 try {
                     if (message && message.action) {
+                        console.log('📨 Popup received message:', message.action);
+                        
                         if (message.action === 'analysisComplete') {
-                            console.log('Analysis complete received:', message.analysis);
-                            currentAnalysis = message.analysis;
                             try {
-                                displayAnalysis(currentAnalysis);
+                                currentAnalysis = message.analysis;
+                                displayAnalysis(message.analysis);
                             } catch (displayError) {
                                 console.error('Error displaying analysis:', displayError);
                                 showError('Error displaying analysis results');
                             }
                         } else if (message.action === 'analysisError') {
-                            console.error('Analysis error received:', message.error);
                             try {
-                                showError(`Analysis failed: ${message.error}`);
-                            } catch (showError) {
-                                console.error('Error showing error message:', showError);
-                            }
-                        } else if (message.action === 'privacyLinksFound') {
-                            console.log('Privacy links found:', message.links);
-                            privacyLinks = message.links || [];
-                            try {
-                                displayPrivacyLinks(privacyLinks);
-                            } catch (displayError) {
-                                console.error('Error displaying privacy links:', displayError);
+                                showError(message.error || 'Analysis failed');
+                            } catch (errorError) {
+                                console.error('Error showing error message:', errorError);
                             }
                         }
                     }
                 } catch (messageError) {
                     console.error('Error in popup message listener:', messageError);
-                    try {
-                        showError('Error processing analysis results');
-                    } catch (showError) {
-                        console.error('Error showing error message:', showError);
-                    }
+                    try { showError('Error processing analysis results'); } catch (showError) { console.error('Error showing error message:', showError); }
                 }
             });
         } catch (listenerError) {
             console.error('Error setting up message listener:', listenerError);
         }
         
-        // Add timeout for analysis with error handling
+        // Set up dashboard button
+        try {
+            const dashboardButton = document.getElementById('dashboard-button');
+            if (dashboardButton) {
+                dashboardButton.addEventListener('click', function() {
+                    try {
+                        openDashboard();
+                    } catch (dashboardError) {
+                        console.error('Error opening dashboard:', dashboardError);
+                        showError('Failed to open dashboard');
+                    }
+                });
+            }
+        } catch (buttonError) {
+            console.error('Error setting up dashboard button:', buttonError);
+        }
+        
         try {
             setTimeout(() => {
                 try {
@@ -131,13 +112,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (timeoutError) {
                     console.error('Error in timeout handler:', timeoutError);
                 }
-            }, 10000); // 10 second timeout
+            }, 10000);
         } catch (timeoutError) {
             console.error('Error setting timeout:', timeoutError);
         }
+        
     } catch (initError) {
         console.error('Critical error in popup initialization:', initError);
-        // Try to show error message
         try {
             const errorElement = document.getElementById('error');
             const errorMessageElement = document.getElementById('error-message');
@@ -149,111 +130,137 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-function checkForAnalysis(tabId) {
+function triggerAnalysis() {
     try {
-        // Send message to content script to get current analysis
-        chrome.tabs.sendMessage(tabId, {action: 'getAnalysis'}, function(response) {
-            if (chrome.runtime.lastError) {
-                console.error('Error checking analysis:', chrome.runtime.lastError);
-                showError('Unable to get analysis results');
-            } else if (response && response.analysis) {
-                console.log('Found existing analysis:', response.analysis);
-                currentAnalysis = response.analysis;
+        console.log('🔍 Triggering analysis...');
+        
+        // Check if content script is available
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            try {
+                if (tabs && tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {action: 'ping'}, function(response) {
+                        try {
+                            if (chrome.runtime.lastError) {
+                                console.log('Content script not ready, injecting...');
+                                injectContentScript();
+                            } else {
+                                console.log('Content script ready, triggering analysis');
+                                performAnalysis();
+                            }
+                        } catch (pingError) {
+                            console.error('Error in ping response:', pingError);
+                            injectContentScript();
+                        }
+                    });
+                }
+            } catch (queryError) {
+                console.error('Error querying tabs for analysis:', queryError);
+                showError('Unable to access current tab');
+            }
+        });
+    } catch (triggerError) {
+        console.error('Error triggering analysis:', triggerError);
+        showError('Failed to start analysis');
+    }
+}
+
+function injectContentScript() {
+    try {
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            try {
+                if (tabs && tabs[0]) {
+                    chrome.scripting.executeScript({
+                        target: {tabId: tabs[0].id},
+                        files: ['content.js']
+                    }, function() {
+                        try {
+                            if (chrome.runtime.lastError) {
+                                console.error('Error injecting content script:', chrome.runtime.lastError);
+                                showError('Failed to inject analysis script');
+                            } else {
+                                console.log('Content script injected, triggering analysis');
+                                setTimeout(performAnalysis, 1000);
+                            }
+                        } catch (injectError) {
+                            console.error('Error in injection callback:', injectError);
+                            showError('Failed to inject analysis script');
+                        }
+                    });
+                }
+            } catch (queryError) {
+                console.error('Error querying tabs for injection:', queryError);
+                showError('Unable to access current tab');
+            }
+        });
+    } catch (injectError) {
+        console.error('Error injecting content script:', injectError);
+        showError('Failed to inject analysis script');
+    }
+}
+
+function performAnalysis() {
+    try {
+        console.log('🔍 Performing analysis...');
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            try {
+                if (tabs && tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {action: 'analyze'}, function(response) {
+                        try {
+                            if (chrome.runtime.lastError) {
+                                console.error('Error sending analyze message:', chrome.runtime.lastError);
+                                showError('Analysis failed. Please refresh the page and try again.');
+                            }
+                        } catch (sendError) {
+                            console.error('Error in analyze message callback:', sendError);
+                            showError('Analysis failed');
+                        }
+                    });
+                }
+            } catch (queryError) {
+                console.error('Error querying tabs for analysis:', queryError);
+                showError('Unable to access current tab');
+            }
+        });
+    } catch (performError) {
+        console.error('Error performing analysis:', performError);
+        showError('Failed to perform analysis');
+    }
+}
+
+function checkForAnalysis() {
+    try {
+        if (currentAnalysis) {
+            try {
                 displayAnalysis(currentAnalysis);
-            } else if (response && response.error) {
-                console.error('Analysis error:', response.error);
-                showError(response.error);
-            } else {
-                // No analysis found, show error
-                console.log('No analysis found');
-                showError('Analysis not available for this page');
+            } catch (displayError) {
+                console.error('Error displaying cached analysis:', displayError);
+                showError('Error displaying analysis');
             }
-        });
-    } catch (error) {
-        console.error('Error in checkForAnalysis:', error);
-        showError('Unable to check analysis');
-    }
-}
-
-function triggerAnalysis(tabId) {
-    try {
-        // Check if content script is available first
-        chrome.tabs.sendMessage(tabId, {action: 'ping'}, function(response) {
-            if (chrome.runtime.lastError) {
-                console.log('Content script not ready, injecting...');
-                // Inject content script if not available
-                chrome.scripting.executeScript({
-                    target: {tabId: tabId},
-                    files: ['content.js']
-                }, function() {
-                    if (chrome.runtime.lastError) {
-                        console.error('Failed to inject content script:', chrome.runtime.lastError);
-                        showError('Unable to analyze this page');
-                    } else {
-                        // Try analysis again after injection
-                        setTimeout(() => {
-                            performAnalysis(tabId);
-                        }, 500);
-                    }
-                });
-            } else {
-                // Content script is ready, perform analysis
-                performAnalysis(tabId);
+        } else {
+            try {
+                triggerAnalysis();
+            } catch (triggerError) {
+                console.error('Error triggering analysis on check:', triggerError);
+                showError('Failed to start analysis');
             }
-        });
-    } catch (error) {
-        console.error('Error in triggerAnalysis:', error);
-        showError('Unable to trigger analysis');
-    }
-}
-
-function performAnalysis(tabId) {
-    try {
-        chrome.tabs.sendMessage(tabId, {action: 'analyzeCurrentPage'}, function(response) {
-            if (chrome.runtime.lastError) {
-                console.error('Analysis error:', chrome.runtime.lastError);
-                showError('Unable to analyze this page');
-            } else if (response && response.error) {
-                console.error('Analysis error:', response.error);
-                showError(response.error);
-            } else if (response) {
-                console.log('Analysis triggered:', response);
-                
-                // Check for results immediately
-                setTimeout(() => {
-                    checkForAnalysis(tabId);
-                }, 1000);
-            } else {
-                console.log('No response from content script');
-                showError('Unable to analyze this page');
-            }
-        });
-    } catch (error) {
-        console.error('Error in performAnalysis:', error);
-        showError('Analysis failed');
+        }
+    } catch (checkError) {
+        console.error('Error checking for analysis:', checkError);
+        showError('Error checking analysis status');
     }
 }
 
 function displayAnalysis(analysis) {
     try {
-        // Hide loading and error states
+        console.log('📊 Displaying analysis:', analysis);
+        
         const loadingElement = document.getElementById('loading');
-        const errorElement = document.getElementById('error');
         const analysisElement = document.getElementById('analysis');
+        const errorElement = document.getElementById('error');
         
         if (loadingElement) loadingElement.style.display = 'none';
         if (errorElement) errorElement.style.display = 'none';
         if (analysisElement) analysisElement.style.display = 'block';
-        
-        // Display current URL from address bar
-        const currentUrl = analysis.url || 'Unknown URL';
-        console.log('🌐 Displaying analysis for URL from address bar:', currentUrl);
-        
-        // Show the URL in the popup
-        const urlElement = document.getElementById('current-url');
-        if (urlElement) {
-            urlElement.textContent = currentUrl;
-        }
         
         // Display risk score
         const riskScore = analysis.risk_score || 0;
@@ -286,156 +293,88 @@ function displayAnalysis(analysis) {
         }
         
         // Display recommendation reason
-        const recommendationReason = analysis.recommendation_reason || 'Analysis complete';
-        const reasonElement = document.getElementById('recommendation-reason');
-        if (reasonElement) {
-            reasonElement.textContent = recommendationReason;
+        const reasonElement = document.getElementById('reason-text');
+        const recommendationDiv = document.getElementById('recommendation-reason');
+        if (reasonElement && analysis.recommendation_reason) {
+            reasonElement.textContent = analysis.recommendation_reason;
+            if (recommendationDiv) recommendationDiv.classList.remove('hidden');
+        } else if (recommendationDiv) {
+            recommendationDiv.classList.add('hidden');
         }
         
-        // Display features used
-        if (analysis.features_used) {
-            const featuresContainer = document.getElementById('features-list');
-            const featuresUsedElement = document.getElementById('features-used');
-            
-            if (featuresContainer) {
-                featuresContainer.innerHTML = '';
-                
-                analysis.features_used.forEach(feature => {
-                    const featureTag = document.createElement('span');
-                    featureTag.className = 'feature-tag';
-                    featureTag.textContent = feature;
-                    featuresContainer.appendChild(featureTag);
-                });
-            }
-            
-            if (featuresUsedElement) {
-                featuresUsedElement.style.display = 'block';
-            }
-        }
+        // Display metrics
+        const formsCountElement = document.getElementById('forms-count');
+        const sensitiveFieldsElement = document.getElementById('sensitive-fields');
+        const threatsCountElement = document.getElementById('threats-count');
+        const riskLevelElement = document.getElementById('risk-level');
         
-        // Display analysis summary
-        const summary = analysis.summary || 'Analysis completed';
-        const summaryElement = document.getElementById('analysis-summary');
-        if (summaryElement) {
-            summaryElement.textContent = summary;
-        }
+        if (formsCountElement) formsCountElement.textContent = analysis.forms || 0;
+        if (sensitiveFieldsElement) sensitiveFieldsElement.textContent = analysis.sensitive_fields || 0;
+        if (threatsCountElement) threatsCountElement.textContent = analysis.privacy_threats ? analysis.privacy_threats.length : 0;
+        if (riskLevelElement) riskLevelElement.textContent = recommendation;
         
-        // Display student-friendly summary
-        const studentSummary = analysis.student_summary || 'Student summary not available';
-        const studentSummaryElement = document.getElementById('student-summary');
-        if (studentSummaryElement) {
-            studentSummaryElement.textContent = studentSummary;
-        }
+        // Display threats
+        const threatsContainer = document.getElementById('threats-container');
+        const threatsList = document.getElementById('threats-list');
         
-        // Display privacy threats
-        const privacyThreats = analysis.privacy_threats || [];
-        const threatsContainer = document.getElementById('privacy-threats');
-        
-        if (threatsContainer) {
-            if (privacyThreats.length > 0) {
-                threatsContainer.innerHTML = '';
-                privacyThreats.forEach(threat => {
-                    const threatElement = document.createElement('div');
-                    threatElement.className = 'threat-item';
-                    threatElement.textContent = threat;
-                    threatsContainer.appendChild(threatElement);
-                });
+        if (threatsContainer && threatsList) {
+            if (analysis.privacy_threats && analysis.privacy_threats.length > 0) {
+                threatsList.innerHTML = analysis.privacy_threats.map(threat => 
+                    `<div class="threat-item">${threat}</div>`
+                ).join('');
+                threatsContainer.classList.remove('hidden');
             } else {
-                threatsContainer.innerHTML = '<div class="detail-item">No privacy threats detected</div>';
+                threatsContainer.classList.add('hidden');
             }
         }
         
-        // Display detailed risk metrics
-        if (analysis.detailed_metrics) {
-            const metrics = analysis.detailed_metrics;
-            const detailedAnalysis = analysis.detailed_analysis || {};
-            
-            // Update metric values
-            const metricElements = {
-                'data-monetization': detailedAnalysis.data_monetization_risk || 'Low',
-                'sensitive-data': detailedAnalysis.sensitive_data_risk || 'Low',
-                'behavioral-tracking': detailedAnalysis.tracking_risk || 'Low',
-                'legal-concerns': detailedAnalysis.legal_risk || 'Low',
-                'data-retention': detailedAnalysis.retention_risk || 'Low',
-                'third-party': detailedAnalysis.third_party_risk || 'Low',
-                'international': detailedAnalysis.international_risk || 'Low',
-                'form-risks': detailedAnalysis.form_risk || 'Low'
-            };
-            
-            Object.keys(metricElements).forEach(id => {
-                const element = document.getElementById(id);
-                if (element) {
-                    element.textContent = metricElements[id];
-                    element.className = 'metric-value';
-                    
-                    // Add risk color class
-                    const riskLevel = metricElements[id].toLowerCase();
-                    if (riskLevel === 'critical') {
-                        element.classList.add('risk-critical');
-                    } else if (riskLevel === 'high') {
-                        element.classList.add('risk-high');
-                    } else if (riskLevel === 'medium') {
-                        element.classList.add('risk-medium');
-                    } else {
-                        element.classList.add('risk-low');
-                    }
-                }
-            });
+        // Display student summary
+        const studentSummaryElement = document.getElementById('student-summary');
+        const summaryTextElement = document.getElementById('summary-text');
+        
+        if (studentSummaryElement && summaryTextElement) {
+            if (analysis.student_summary) {
+                summaryTextElement.textContent = analysis.student_summary;
+                studentSummaryElement.classList.remove('hidden');
+            } else {
+                studentSummaryElement.classList.add('hidden');
+            }
         }
         
-        // Display form analysis
-        const forms = analysis.forms || [];
-        const totalFields = forms.reduce((count, form) => count + (form.fields ? form.fields.length : 0), 0);
-        const sensitiveFields = forms.reduce((count, form) => {
-            return count + (form.fields ? form.fields.filter(f => f.sensitive).length : 0);
-        }, 0);
+        // Display detailed metrics
+        const riskMetricsElement = document.getElementById('risk-metrics');
+        const metricsListElement = document.getElementById('metrics-list');
         
-        const formAnalysis = `Found ${forms.length} forms with ${totalFields} fields (${sensitiveFields} sensitive)`;
-        const formAnalysisElement = document.getElementById('form-analysis');
-        if (formAnalysisElement) {
-            formAnalysisElement.textContent = formAnalysis;
+        if (riskMetricsElement && metricsListElement && analysis.detailed_metrics) {
+            const metricsHTML = Object.entries(analysis.detailed_metrics).map(([key, value]) => 
+                `<div class="metric-item">
+                    <div class="metric-label">${key.replace(/_/g, ' ').toUpperCase()}</div>
+                    <div class="metric-value">${value}</div>
+                </div>`
+            ).join('');
+            metricsListElement.innerHTML = metricsHTML;
+            riskMetricsElement.classList.remove('hidden');
+        } else if (riskMetricsElement) {
+            riskMetricsElement.classList.add('hidden');
         }
         
         // Update badge
-        updateBadge(riskScore);
-    } catch (error) {
-        console.error('Error in displayAnalysis:', error);
-        showError('Error displaying analysis results');
-    }
-}
-
-function displayPrivacyLinks(links) {
-    try {
-        if (links && links.length > 0) {
-            const linksContainer = document.getElementById('links-list');
-            const privacyLinksElement = document.getElementById('privacy-links');
-            
-            if (linksContainer) {
-                linksContainer.innerHTML = '';
-                
-                links.forEach(link => {
-                    if (link && link.href) {
-                        const linkElement = document.createElement('a');
-                        linkElement.className = 'link-item';
-                        linkElement.href = link.href;
-                        linkElement.textContent = `${link.text || 'Link'} (${link.type || 'unknown'})`;
-                        linkElement.target = '_blank';
-                        linksContainer.appendChild(linkElement);
-                    }
-                });
-            }
-            
-            if (privacyLinksElement) {
-                privacyLinksElement.style.display = 'block';
-            }
+        try {
+            updateBadge(riskScore);
+        } catch (badgeError) {
+            console.error('Error updating badge:', badgeError);
         }
-    } catch (error) {
-        console.error('Error in displayPrivacyLinks:', error);
+        
+    } catch (displayError) {
+        console.error('Error displaying analysis:', displayError);
+        showError('Error displaying analysis results');
     }
 }
 
 function showError(message) {
     try {
+        console.error('❌ Error:', message);
+        
         const loadingElement = document.getElementById('loading');
         const analysisElement = document.getElementById('analysis');
         const errorElement = document.getElementById('error');
@@ -446,89 +385,61 @@ function showError(message) {
         if (errorElement) errorElement.style.display = 'block';
         if (errorMessageElement) errorMessageElement.textContent = message;
         
-        // Auto-retry after 5 seconds
-        setTimeout(() => {
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                if (tabs[0]) {
-                    triggerAnalysis(tabs[0].id);
-                }
-            });
-        }, 5000);
-    } catch (error) {
-        console.error('Error in showError:', error);
-    }
-}
-
-function retryAnalysis() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if (tabs[0]) {
-            const loadingElement = document.getElementById('loading');
-            const errorElement = document.getElementById('error');
-            const analysisElement = document.getElementById('analysis');
-            
-            if (loadingElement) loadingElement.style.display = 'block';
-            if (errorElement) errorElement.style.display = 'none';
-            if (analysisElement) analysisElement.style.display = 'none';
-            
-            triggerAnalysis(tabs[0].id);
-        }
-    });
-}
-
-function refreshAnalysis() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if (tabs[0]) {
-            const loadingElement = document.getElementById('loading');
-            const analysisElement = document.getElementById('analysis');
-            
-            if (loadingElement) loadingElement.style.display = 'block';
-            if (analysisElement) analysisElement.style.display = 'none';
-            
-            triggerAnalysis(tabs[0].id);
-        }
-    });
-}
-
-function openCurrentPage() {
-    try {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            if (tabs[0]) {
-                chrome.tabs.update(tabs[0].id, {active: true});
-                window.close();
-            } else {
-                console.error('No active tab found');
-            }
-        });
-    } catch (error) {
-        console.error('Error in openCurrentPage:', error);
+    } catch (errorError) {
+        console.error('Error showing error message:', errorError);
     }
 }
 
 function updateBadge(riskScore) {
     try {
-        // Send message to background script to update badge
         chrome.runtime.sendMessage({
             action: 'updateBadge',
-            riskScore: riskScore || 0
+            riskScore: riskScore
         }, function(response) {
             if (chrome.runtime.lastError) {
                 console.error('Error updating badge:', chrome.runtime.lastError);
             }
         });
-    } catch (error) {
-        console.error('Error in updateBadge:', error);
+    } catch (badgeError) {
+        console.error('Error updating badge:', badgeError);
     }
 }
 
-// Handle window focus to refresh analysis
-window.addEventListener('focus', function() {
+function openDashboard() {
     try {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            if (tabs[0]) {
-                checkForAnalysis(tabs[0].id);
+        console.log('📊 Opening dashboard...');
+        
+        // Open dashboard in new tab
+        chrome.tabs.create({
+            url: 'http://localhost:8080'
+        }, function(tab) {
+            try {
+                if (chrome.runtime.lastError) {
+                    console.error('Error opening dashboard:', chrome.runtime.lastError);
+                    showError('Failed to open dashboard. Make sure the dashboard server is running.');
+                } else {
+                    console.log('✅ Dashboard opened successfully');
+                }
+            } catch (createError) {
+                console.error('Error in tab creation callback:', createError);
+                showError('Failed to open dashboard');
             }
         });
-    } catch (error) {
-        console.error('Error in window focus handler:', error);
+        
+    } catch (dashboardError) {
+        console.error('Error opening dashboard:', dashboardError);
+        showError('Failed to open dashboard');
     }
-}); 
+}
+
+// Auto-refresh when popup gains focus
+window.addEventListener('focus', function() {
+    try {
+        console.log('🔄 Popup focused, checking for updates...');
+        checkForAnalysis();
+    } catch (focusError) {
+        console.error('Error on popup focus:', focusError);
+    }
+});
+
+console.log('🔒 ShadowLens Popup: Ready!'); 
