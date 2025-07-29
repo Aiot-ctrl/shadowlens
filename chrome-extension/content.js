@@ -672,7 +672,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } else if (message.action === 'getAnalysis') {
             sendResponse({ analysis: currentAnalysis });
             return true; // Keep message channel open
-        } else if (message.action === 'analyzeCurrentPage') {
+        } else if (message.action === 'analyze') {
             analyzeCurrentPage();
             sendResponse({ status: 'analysis_started' });
             return true; // Keep message channel open
