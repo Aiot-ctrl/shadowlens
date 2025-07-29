@@ -200,7 +200,7 @@ chrome.action.onClicked.addListener((tab) => {
         
         if (tab && tab.url) {
             try {
-                chrome.tabs.sendMessage(tab.id, { action: 'analyzeCurrentPage' }, function(response) {
+                chrome.tabs.sendMessage(tab.id, { action: 'analyze' }, function(response) {
                     try {
                         if (chrome.runtime.lastError) {
                             console.error('Error sending message to tab:', chrome.runtime.lastError);

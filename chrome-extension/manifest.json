@@ -10,7 +10,6 @@
     "tabs"
   ],
   "host_permissions": [
-    "http://localhost:5000/*",
     "<all_urls>"
   ],
   "background": {
@@ -41,7 +40,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["consent-banner.html"],
+      "resources": ["consent-banner.html", "dashboard.html", "dashboard.js"],
       "matches": ["<all_urls>"]
     }
   ]

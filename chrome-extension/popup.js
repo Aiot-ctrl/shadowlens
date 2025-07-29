@@ -409,14 +409,25 @@ function openDashboard() {
     try {
         console.log('📊 Opening dashboard...');
         
-        // Open dashboard in new tab
+        // Check if chrome.runtime is available
+        if (typeof chrome === 'undefined' || !chrome.runtime) {
+            console.error('Chrome runtime not available');
+            showError('Dashboard not available in this context');
+            return;
+        }
+        
+        // Get dashboard URL
+        const dashboardUrl = chrome.runtime.getURL('dashboard.html');
+        console.log('Dashboard URL:', dashboardUrl);
+        
+        // Open dashboard HTML file in new tab
         chrome.tabs.create({
-            url: 'http://localhost:8080'
+            url: dashboardUrl
         }, function(tab) {
             try {
                 if (chrome.runtime.lastError) {
                     console.error('Error opening dashboard:', chrome.runtime.lastError);
-                    showError('Failed to open dashboard. Make sure the dashboard server is running.');
+                    showError('Failed to open dashboard. Please try again.');
                 } else {
                     console.log('✅ Dashboard opened successfully');
                 }
