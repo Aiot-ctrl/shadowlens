@@ -524,6 +524,11 @@ function performLocalAnalysis(data) {
 
 function saveAnalysisToStorage(analysis) {
     try {
+        if (!analysis) {
+            console.error('No analysis data to save');
+            return;
+        }
+        
         // Get existing history
         chrome.storage.local.get(['websiteHistory'], function(result) {
             if (chrome.runtime.lastError) {
@@ -575,20 +580,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'ping') {
             // Respond to ping to confirm content script is ready
             sendResponse({ status: 'ready' });
+            return true; // Keep message channel open
         } else if (message.action === 'getAnalysis') {
             sendResponse({ analysis: currentAnalysis });
+            return true; // Keep message channel open
         } else if (message.action === 'analyzeCurrentPage') {
             analyzeCurrentPage();
             sendResponse({ status: 'analysis_started' });
+            return true; // Keep message channel open
         } else if (message.action === 'getCurrentUrl') {
             // Get URL directly from address bar
             const currentUrl = window.location.href;
             console.log('🌐 Getting URL from address bar:', currentUrl);
             sendResponse({ url: currentUrl });
+            return true; // Keep message channel open
         }
     } catch (error) {
         console.error('Error in message listener:', error);
         sendResponse({ error: error.message });
+        return true; // Keep message channel open
     }
 });
 
