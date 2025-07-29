@@ -40,12 +40,23 @@ document.addEventListener('DOMContentLoaded', function() {
             displayPrivacyLinks(privacyLinks);
         }
     });
+    
+    // Add timeout for analysis
+    setTimeout(() => {
+        if (document.getElementById('loading').style.display !== 'none') {
+            console.log('Analysis timeout, showing error');
+            showError('Analysis timed out. Please try again.');
+        }
+    }, 10000); // 10 second timeout
 });
 
 function checkForAnalysis(tabId) {
     // Send message to content script to get current analysis
     chrome.tabs.sendMessage(tabId, {action: 'getAnalysis'}, function(response) {
-        if (response && response.analysis) {
+        if (chrome.runtime.lastError) {
+            console.error('Error checking analysis:', chrome.runtime.lastError);
+            showError('Unable to get analysis results');
+        } else if (response && response.analysis) {
             console.log('Found existing analysis:', response.analysis);
             currentAnalysis = response.analysis;
             displayAnalysis(currentAnalysis);
@@ -58,8 +69,38 @@ function checkForAnalysis(tabId) {
 }
 
 function triggerAnalysis(tabId) {
+    // Check if content script is available first
+    chrome.tabs.sendMessage(tabId, {action: 'ping'}, function(response) {
+        if (chrome.runtime.lastError) {
+            console.log('Content script not ready, injecting...');
+            // Inject content script if not available
+            chrome.scripting.executeScript({
+                target: {tabId: tabId},
+                files: ['content.js']
+            }, function() {
+                if (chrome.runtime.lastError) {
+                    console.error('Failed to inject content script:', chrome.runtime.lastError);
+                    showError('Unable to analyze this page');
+                } else {
+                    // Try analysis again after injection
+                    setTimeout(() => {
+                        performAnalysis(tabId);
+                    }, 500);
+                }
+            });
+        } else {
+            // Content script is ready, perform analysis
+            performAnalysis(tabId);
+        }
+    });
+}
+
+function performAnalysis(tabId) {
     chrome.tabs.sendMessage(tabId, {action: 'analyzeCurrentPage'}, function(response) {
-        if (response && response.error) {
+        if (chrome.runtime.lastError) {
+            console.error('Analysis error:', chrome.runtime.lastError);
+            showError('Unable to analyze this page');
+        } else if (response && response.error) {
             console.error('Analysis error:', response.error);
             showError(response.error);
         } else if (response) {
@@ -68,7 +109,7 @@ function triggerAnalysis(tabId) {
             // Check for results immediately
             setTimeout(() => {
                 checkForAnalysis(tabId);
-            }, 1000); // Reduced wait time
+            }, 1000);
         } else {
             console.log('No response from content script');
             showError('Unable to analyze this page');

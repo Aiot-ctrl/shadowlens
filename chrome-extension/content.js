@@ -302,7 +302,10 @@ function saveAnalysisToStorage(analysis) {
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'getAnalysis') {
+    if (message.action === 'ping') {
+        // Respond to ping to confirm content script is ready
+        sendResponse({ status: 'ready' });
+    } else if (message.action === 'getAnalysis') {
         sendResponse({ analysis: currentAnalysis });
     } else if (message.action === 'analyzeCurrentPage') {
         analyzeCurrentPage();
