@@ -11,24 +11,14 @@
   ],
   "host_permissions": [
     "http://localhost:5000/*",
-    "https://*.edu/*",
-    "https://*.school/*",
-    "https://*.education/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://*.edu/*",
-        "https://*.school/*",
-        "https://*.education/*",
-        "https://*.khanacademy.org/*",
-        "https://*.duolingo.com/*",
-        "https://*.coursera.org/*",
-        "https://*.edx.org/*"
-      ],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_end"
     }

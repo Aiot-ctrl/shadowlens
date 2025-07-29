@@ -1,154 +1,282 @@
-// ShadowLens Popup Script
-// Handles the extension popup UI
+// ShadowLens Popup JavaScript - Enhanced Features
+let currentAnalysis = null;
+let privacyLinks = [];
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadScanHistory();
-    loadStats();
-    setupEventListeners();
+// Initialize popup when opened
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔒 ShadowLens Popup: Initializing Enhanced Features...');
+    
+    // Get current tab
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (tabs[0]) {
+            const currentTab = tabs[0];
+            console.log('Current tab:', currentTab.url);
+            
+            // Check if we have analysis results
+            checkForAnalysis(currentTab.id);
+        }
+    });
+    
+    // Listen for messages from content script
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'analysisComplete') {
+            console.log('Analysis complete received:', message.analysis);
+            currentAnalysis = message.analysis;
+            displayAnalysis(currentAnalysis);
+        } else if (message.action === 'privacyLinksFound') {
+            console.log('Privacy links found:', message.links);
+            privacyLinks = message.links;
+            displayPrivacyLinks(privacyLinks);
+        }
+    });
 });
 
-function loadScanHistory() {
-    chrome.storage.local.get(['scanHistory'], (data) => {
-        const history = data.scanHistory || [];
-        displayScanHistory(history);
+function checkForAnalysis(tabId) {
+    // Send message to content script to get current analysis
+    chrome.tabs.sendMessage(tabId, {action: 'getAnalysis'}, function(response) {
+        if (response && response.analysis) {
+            console.log('Found existing analysis:', response.analysis);
+            currentAnalysis = response.analysis;
+            displayAnalysis(currentAnalysis);
+        } else {
+            // No analysis yet, trigger one
+            console.log('No analysis found, triggering new analysis...');
+            triggerAnalysis(tabId);
+        }
     });
 }
 
-function loadStats() {
-    chrome.storage.local.get(['scanHistory'], (data) => {
-        const history = data.scanHistory || [];
-        updateStats(history);
+function triggerAnalysis(tabId) {
+    chrome.tabs.sendMessage(tabId, {action: 'analyzeCurrentPage'}, function(response) {
+        if (response && response.error) {
+            console.error('Analysis error:', response.error);
+            showError(response.error);
+        } else if (response) {
+            console.log('Analysis triggered:', response);
+            currentAnalysis = response;
+            displayAnalysis(currentAnalysis);
+        }
     });
 }
 
-function updateStats(history) {
-    const totalScans = history.length;
-    const highRiskSites = history.filter(scan => scan.riskScore >= 7).length;
+function displayAnalysis(analysis) {
+    // Hide loading and error states
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('analysis').style.display = 'block';
     
-    document.getElementById('total-scans').textContent = totalScans;
-    document.getElementById('high-risk').textContent = highRiskSites;
-}
-
-function displayScanHistory(history) {
-    const scanList = document.getElementById('scan-list');
+    // Display risk score
+    const riskScore = analysis.risk_score || 0;
+    const recommendation = analysis.recommendation || 'Unknown';
     
-    if (history.length === 0) {
-        scanList.innerHTML = `
-            <div class="empty-state">
-                <p>No scans yet</p>
-                <p style="font-size: 11px; opacity: 0.7;">
-                    Visit educational websites to start scanning
-                </p>
-            </div>
-        `;
-        return;
+    document.getElementById('risk-number').textContent = riskScore;
+    document.getElementById('risk-label').textContent = recommendation;
+    
+    // Set risk color
+    const riskLabel = document.getElementById('risk-label');
+    riskLabel.className = 'risk-label';
+    
+    if (riskScore >= 8) {
+        riskLabel.classList.add('risk-dangerous');
+        document.getElementById('risk-description').textContent = 'Critical privacy concerns detected';
+    } else if (riskScore >= 6) {
+        riskLabel.classList.add('risk-caution');
+        document.getElementById('risk-description').textContent = 'Significant privacy concerns';
+    } else if (riskScore >= 4) {
+        riskLabel.classList.add('risk-moderate');
+        document.getElementById('risk-description').textContent = 'Some privacy concerns';
+    } else {
+        riskLabel.classList.add('risk-safe');
+        document.getElementById('risk-description').textContent = 'Good privacy practices';
     }
     
-    // Show recent scans (last 5)
-    const recentScans = history.slice(-5).reverse();
-    
-    scanList.innerHTML = recentScans.map(scan => {
-        const riskClass = getRiskClass(scan.riskScore);
-        const timeAgo = getTimeAgo(scan.timestamp);
-        const hostname = new URL(scan.url).hostname;
+    // Display features used
+    if (analysis.features_used) {
+        const featuresContainer = document.getElementById('features-list');
+        featuresContainer.innerHTML = '';
         
-        return `
-            <div class="scan-item">
-                <div class="scan-url">${hostname}</div>
-                <div class="scan-details">
-                    <span class="risk-score ${riskClass}">${scan.riskScore}/10</span>
-                    <span class="recommendation">${scan.recommendation}</span>
-                    <span style="font-size: 10px; opacity: 0.7;">${timeAgo}</span>
-                </div>
-                ${scan.redFlags && scan.redFlags.length > 0 ? `
-                    <div class="red-flags">
-                        ${scan.redFlags.slice(0, 2).map(flag => 
-                            `<div class="red-flag">${flag}</div>`
-                        ).join('')}
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    }).join('');
-}
-
-function getRiskClass(riskScore) {
-    if (riskScore >= 7) return 'risk-dangerous';
-    if (riskScore >= 4) return 'risk-caution';
-    return 'risk-safe';
-}
-
-function getTimeAgo(timestamp) {
-    const now = new Date();
-    const scanTime = new Date(timestamp);
-    const diffMs = now - scanTime;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-}
-
-function setupEventListeners() {
-    // Scan current site button
-    document.getElementById('scan-current').addEventListener('click', () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            const currentTab = tabs[0];
-            if (currentTab) {
-                chrome.scripting.executeScript({
-                    target: { tabId: currentTab.id },
-                    function: () => {
-                        if (window.shadowLensScanner) {
-                            window.shadowLensScanner.scanPage();
-                        }
-                    }
-                });
-            }
+        analysis.features_used.forEach(feature => {
+            const featureTag = document.createElement('span');
+            featureTag.className = 'feature-tag';
+            featureTag.textContent = feature;
+            featuresContainer.appendChild(featureTag);
         });
-    });
-    
-    // Export data button
-    document.getElementById('export-data').addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'exportData' }, (response) => {
-            if (response && response.success) {
-                showNotification('Data exported successfully!');
-            } else {
-                showNotification('Export failed. Please try again.');
-            }
-        });
-    });
-}
-
-function showNotification(message) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #4CAF50;
-        color: white;
-        padding: 10px 15px;
-        border-radius: 4px;
-        z-index: 10000;
-        font-size: 12px;
-    `;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
-}
-
-// Listen for storage changes to update UI
-chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.scanHistory) {
-        const history = changes.scanHistory.newValue || [];
-        displayScanHistory(history);
-        updateStats(history);
+        
+        document.getElementById('features-used').style.display = 'block';
     }
+    
+    // Display analysis summary
+    const summary = analysis.summary || 'Analysis completed';
+    document.getElementById('analysis-summary').textContent = summary;
+    
+    // Display student-friendly summary
+    const studentSummary = analysis.student_summary || 'Student summary not available';
+    document.getElementById('student-summary').textContent = studentSummary;
+    
+    // Display privacy threats
+    const privacyThreats = analysis.privacy_threats || [];
+    const threatsContainer = document.getElementById('privacy-threats');
+    
+    if (privacyThreats.length > 0) {
+        threatsContainer.innerHTML = '';
+        privacyThreats.forEach(threat => {
+            const threatElement = document.createElement('div');
+            threatElement.className = 'threat-item';
+            threatElement.textContent = threat;
+            threatsContainer.appendChild(threatElement);
+        });
+    } else {
+        threatsContainer.innerHTML = '<div class="detail-item">No privacy threats detected</div>';
+    }
+    
+    // Display deception indicators
+    const deceptionIndicators = analysis.deception_indicators || [];
+    const deceptionContainer = document.getElementById('deception-indicators');
+    
+    if (deceptionIndicators.length > 0) {
+        deceptionContainer.innerHTML = '';
+        deceptionIndicators.forEach(indicator => {
+            const indicatorElement = document.createElement('div');
+            indicatorElement.className = 'deception-item';
+            indicatorElement.textContent = `${indicator.type}: ${indicator.pattern} (${indicator.matches} matches)`;
+            deceptionContainer.appendChild(indicatorElement);
+        });
+    } else {
+        deceptionContainer.innerHTML = '<div class="detail-item">No deceptive practices detected</div>';
+    }
+    
+    // Display FERPA compliance issues
+    const ferpaIssues = analysis.ferpa_compliance || [];
+    const ferpaContainer = document.getElementById('ferpa-compliance');
+    
+    if (ferpaIssues.length > 0) {
+        ferpaContainer.innerHTML = '';
+        ferpaIssues.forEach(issue => {
+            const issueElement = document.createElement('div');
+            issueElement.className = 'compliance-item';
+            issueElement.textContent = issue;
+            ferpaContainer.appendChild(issueElement);
+        });
+    } else {
+        ferpaContainer.innerHTML = '<div class="detail-item">No FERPA issues detected</div>';
+    }
+    
+    // Display GDPR compliance issues
+    const gdprIssues = analysis.gdpr_compliance || [];
+    const gdprContainer = document.getElementById('gdpr-compliance');
+    
+    if (gdprIssues.length > 0) {
+        gdprContainer.innerHTML = '';
+        gdprIssues.forEach(issue => {
+            const issueElement = document.createElement('div');
+            issueElement.className = 'compliance-item';
+            issueElement.textContent = issue;
+            gdprContainer.appendChild(issueElement);
+        });
+    } else {
+        gdprContainer.innerHTML = '<div class="detail-item">No GDPR issues detected</div>';
+    }
+    
+    // Display legal concerns (red flags)
+    const redFlags = analysis.red_flags || [];
+    const legalContainer = document.getElementById('legal-concerns');
+    
+    if (redFlags.length > 0) {
+        legalContainer.innerHTML = '';
+        redFlags.forEach(flag => {
+            const flagElement = document.createElement('div');
+            flagElement.className = 'threat-item';
+            flagElement.textContent = flag;
+            legalContainer.appendChild(flagElement);
+        });
+    } else {
+        legalContainer.innerHTML = '<div class="detail-item">No legal concerns detected</div>';
+    }
+    
+    // Display form analysis
+    const forms = analysis.forms || [];
+    const totalFields = forms.reduce((count, form) => count + (form.fields ? form.fields.length : 0), 0);
+    const sensitiveFields = forms.reduce((count, form) => {
+        return count + (form.fields ? form.fields.filter(f => f.sensitive).length : 0);
+    }, 0);
+    
+    const formAnalysis = `Found ${forms.length} forms with ${totalFields} fields (${sensitiveFields} sensitive)`;
+    document.getElementById('form-analysis').textContent = formAnalysis;
+    
+    // Update badge
+    updateBadge(riskScore);
+}
+
+function displayPrivacyLinks(links) {
+    if (links.length > 0) {
+        const linksContainer = document.getElementById('links-list');
+        linksContainer.innerHTML = '';
+        
+        links.forEach(link => {
+            const linkElement = document.createElement('a');
+            linkElement.className = 'link-item';
+            linkElement.href = link.href;
+            linkElement.textContent = `${link.text} (${link.type})`;
+            linkElement.target = '_blank';
+            linksContainer.appendChild(linkElement);
+        });
+        
+        document.getElementById('privacy-links').style.display = 'block';
+    }
+}
+
+function showError(message) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('analysis').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error-message').textContent = message;
+}
+
+function retryAnalysis() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (tabs[0]) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('analysis').style.display = 'none';
+            
+            triggerAnalysis(tabs[0].id);
+        }
+    });
+}
+
+function refreshAnalysis() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (tabs[0]) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('analysis').style.display = 'none';
+            
+            triggerAnalysis(tabs[0].id);
+        }
+    });
+}
+
+function openCurrentPage() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (tabs[0]) {
+            chrome.tabs.update(tabs[0].id, {active: true});
+            window.close();
+        }
+    });
+}
+
+function updateBadge(riskScore) {
+    // Send message to background script to update badge
+    chrome.runtime.sendMessage({
+        action: 'updateBadge',
+        riskScore: riskScore
+    });
+}
+
+// Handle window focus to refresh analysis
+window.addEventListener('focus', function() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (tabs[0]) {
+            checkForAnalysis(tabs[0].id);
+        }
+    });
 }); 

@@ -468,7 +468,11 @@ def extract_data_from_soup(soup, url):
             })
     
     # Website type detection
-    website_type = detect_website_type(url, text)
+    website_type = detect_website_type(url, text, forms)
+    
+    # Website verification detection
+    verification_data = detect_website_verification(url, text, soup)
+    verification_status, verification_description = get_verification_summary(verification_data)
     
     scraped_data = {
         'url': url,
@@ -476,7 +480,10 @@ def extract_data_from_soup(soup, url):
         'text': text,
         'images': images,
         'riskIndicators': risk_indicators,
-        'websiteType': website_type
+        'websiteType': website_type[0], # Store only the type
+        'verification': verification_data,
+        'verificationStatus': verification_status,
+        'verificationDescription': verification_description
     }
     
     print(f"✅ Scraping complete!")
@@ -484,50 +491,168 @@ def extract_data_from_soup(soup, url):
     print(f"   📄 Text length: {len(text)} characters")
     print(f"   🖼️ Images found: {len(images)}")
     print(f"   ⚠️ Risk indicators: {len(risk_indicators)}")
-    print(f"   🌐 Website type: {website_type}")
+    print(f"   🌐 Website type: {website_type[0]}")
+    print(f"   ✅ Verification: {verification_status} - {verification_description}")
     
     return scraped_data
 
-def detect_website_type(url, text):
-    """Detect website type based on URL and content"""
+def detect_website_type(url, text, forms):
+    """Detect website type and provide short description"""
     url_lower = url.lower()
     text_lower = text.lower()
     
-    # Social media detection
-    if any(social in url_lower for social in ['instagram', 'facebook', 'twitter', 'tiktok', 'snapchat', 'linkedin', 'youtube']):
-        return "social_media"
+    # Educational websites
+    if any(keyword in url_lower for keyword in ['edu', 'university', 'college', 'school', 'academy', 'institute', 'coursera', 'edx', 'udemy', 'khanacademy']):
+        return "Educational", "Academic institution or learning platform"
+    if any(keyword in text_lower for keyword in ['course', 'lesson', 'assignment', 'grade', 'student', 'academic', 'enroll', 'curriculum', 'syllabus']):
+        return "Educational", "Learning management system or educational platform"
     
-    # Educational detection
-    if any(edu in url_lower for edu in ['coursera', 'edx', 'khanacademy', 'udemy', 'mit.edu', 'stanford.edu', 'harvard.edu', 'course', 'learn', 'education', 'university']):
-        return "educational"
+    # Social media
+    if any(keyword in url_lower for keyword in ['facebook', 'instagram', 'twitter', 'linkedin', 'tiktok', 'snapchat']):
+        return "Social Media", "Social networking platform"
+    if any(keyword in text_lower for keyword in ['post', 'share', 'follow', 'like', 'comment', 'profile']):
+        return "Social Media", "Social networking or content sharing platform"
     
-    # Financial detection
-    if any(fin in url_lower for fin in ['bank', 'chase', 'wellsfargo', 'paypal', 'stripe', 'financial', 'credit', 'loan', 'mortgage']):
-        return "financial"
+    # E-commerce
+    if any(keyword in url_lower for keyword in ['amazon', 'ebay', 'shop', 'store', 'buy', 'cart', 'walmart', 'target']):
+        return "E-commerce", "Online shopping platform"
+    if any(keyword in text_lower for keyword in ['buy', 'purchase', 'cart', 'checkout', 'price', 'shipping', 'add to cart', 'shopping', 'product', 'sale', 'deal']):
+        return "E-commerce", "Online retail or marketplace"
     
-    # E-commerce detection
-    if any(shop in url_lower for shop in ['amazon', 'ebay', 'shop', 'store', 'buy', 'purchase', 'cart', 'walmart', 'target']):
-        return "ecommerce"
+    # Financial
+    if any(keyword in url_lower for keyword in ['bank', 'paypal', 'stripe', 'finance', 'credit', 'loan']):
+        return "Financial", "Banking or financial services"
+    if any(keyword in text_lower for keyword in ['account', 'balance', 'payment', 'transfer', 'credit card']):
+        return "Financial", "Financial institution or payment processor"
     
-    # Government detection
-    if any(gov in url_lower for gov in ['gov', 'government', 'irs', 'ssa', '.gov']):
-        return "government"
+    # Government
+    if any(keyword in url_lower for keyword in ['gov', 'government', 'official', 'state', 'federal']):
+        return "Government", "Official government website"
     
-    # Healthcare detection
-    if any(health in url_lower for health in ['health', 'medical', 'doctor', 'hospital', 'clinic', 'pharmacy']):
-        return "healthcare"
+    # News/Media
+    if any(keyword in url_lower for keyword in ['news', 'media', 'press', 'journal', 'article']):
+        return "News/Media", "News outlet or media platform"
+    if any(keyword in text_lower for keyword in ['news', 'article', 'report', 'breaking', 'latest']):
+        return "News/Media", "News or content publishing site"
     
-    # Content analysis for type detection
-    if any(term in text_lower for term in ['course', 'lesson', 'learn', 'education', 'university', 'college', 'student', 'academic']):
-        return "educational"
-    elif any(term in text_lower for term in ['shop', 'buy', 'purchase', 'price', 'sale', 'discount', 'cart', 'checkout']):
-        return "ecommerce"
-    elif any(term in text_lower for term in ['bank', 'account', 'payment', 'credit', 'loan', 'mortgage', 'financial']):
-        return "financial"
-    elif any(term in text_lower for term in ['post', 'share', 'follow', 'like', 'comment', 'profile', 'feed']):
-        return "social_media"
+    # Technology
+    if any(keyword in url_lower for keyword in ['github', 'stackoverflow', 'tech', 'software', 'developer']):
+        return "Technology", "Developer or tech platform"
+    if any(keyword in text_lower for keyword in ['code', 'repository', 'developer', 'api', 'software']):
+        return "Technology", "Technology or development platform"
     
-    return "general"
+    # Healthcare
+    if any(keyword in url_lower for keyword in ['health', 'medical', 'doctor', 'hospital', 'clinic']):
+        return "Healthcare", "Healthcare or medical services"
+    if any(keyword in text_lower for keyword in ['health', 'medical', 'treatment', 'symptoms', 'doctor']):
+        return "Healthcare", "Healthcare information or services"
+    
+    # Legal
+    if any(keyword in url_lower for keyword in ['law', 'legal', 'attorney', 'lawyer', 'court']):
+        return "Legal", "Legal services or law firm"
+    if any(keyword in text_lower for keyword in ['legal', 'attorney', 'lawyer', 'case', 'court']):
+        return "Legal", "Legal services or documentation"
+    
+    # Default
+    return "General", "General website or business platform"
+
+def detect_website_verification(url, text, soup):
+    """Detect website verification and ISO certifications"""
+    url_lower = url.lower()
+    text_lower = text.lower()
+    
+    verification_indicators = {
+        'ssl_certificate': False,
+        'iso_certifications': [],
+        'security_badges': [],
+        'trust_indicators': [],
+        'verification_score': 0
+    }
+    
+    # Check for HTTPS (SSL Certificate)
+    if url.startswith('https://'):
+        verification_indicators['ssl_certificate'] = True
+        verification_indicators['verification_score'] += 2
+    
+    # ISO Certification Detection
+    iso_patterns = [
+        r'ISO\s*27001', r'ISO\s*9001', r'ISO\s*14001', r'ISO\s*45001',
+        r'ISO\s*20000', r'ISO\s*22301', r'ISO\s*27002', r'ISO\s*27017',
+        r'ISO\s*27018', r'ISO\s*27701', r'ISO\s*31000', r'ISO\s*50001'
+    ]
+    
+    for pattern in iso_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            verification_indicators['iso_certifications'].extend(matches)
+            verification_indicators['verification_score'] += 3
+    
+    # Security Badges and Trust Indicators
+    security_badges = [
+        'trusted site', 'verified', 'secure', 'certified', 'accredited',
+        'norton secured', 'mcafee secure', 'digicert', 'comodo',
+        'ssl certificate', 'security certificate', 'trust seal',
+        'verified by', 'certified by', 'accredited by'
+    ]
+    
+    for badge in security_badges:
+        if badge in text_lower:
+            verification_indicators['security_badges'].append(badge)
+            verification_indicators['verification_score'] += 1
+    
+    # Trust Indicators
+    trust_indicators = [
+        'privacy shield', 'gdpr compliant', 'ccpa compliant', 'ferpa compliant',
+        'hipaa compliant', 'pci dss', 'soc 2', 'soc 3', 'type ii',
+        'data protection', 'information security', 'cybersecurity',
+        'encryption', 'end-to-end encryption', 'zero-knowledge'
+    ]
+    
+    for indicator in trust_indicators:
+        if indicator in text_lower:
+            verification_indicators['trust_indicators'].append(indicator)
+            verification_indicators['verification_score'] += 1
+    
+    # Check for verification badges in images
+    for img in soup.find_all('img'):
+        img_alt = img.get('alt', '').lower()
+        img_src = img.get('src', '').lower()
+        
+        # Look for verification-related image alt text or src
+        verification_keywords = ['verified', 'secure', 'certified', 'trust', 'ssl', 'iso']
+        for keyword in verification_keywords:
+            if keyword in img_alt or keyword in img_src:
+                verification_indicators['security_badges'].append(f"Image: {img_alt}")
+                verification_indicators['verification_score'] += 1
+                break
+    
+    # Domain verification checks
+    domain_verification = {
+        'has_ssl': verification_indicators['ssl_certificate'],
+        'domain_age': 'unknown',  # Could be enhanced with WHOIS lookup
+        'subdomain_count': len(url.split('.')) - 1,
+        'is_www': 'www.' in url,
+        'is_secure_protocol': url.startswith('https://')
+    }
+    
+    verification_indicators['domain_verification'] = domain_verification
+    
+    return verification_indicators
+
+def get_verification_summary(verification_data):
+    """Generate a summary of website verification status"""
+    score = verification_data['verification_score']
+    
+    if score >= 8:
+        return "Excellent", "Highly verified and secure website"
+    elif score >= 5:
+        return "Good", "Well-verified website with security measures"
+    elif score >= 3:
+        return "Moderate", "Some verification indicators present"
+    elif score >= 1:
+        return "Poor", "Minimal verification indicators"
+    else:
+        return "Unverified", "No verification indicators detected"
 
 def analyze_with_backend(scraped_data):
     """Send scraped data to backend for AI analysis"""
@@ -573,25 +698,135 @@ def analyze_with_backend(scraped_data):
         print(f"❌ Analysis failed: {e}")
         return None
 
+def save_to_chrome_storage(url, analysis_result, scraped_data):
+    """Save analysis result to Chrome storage for dashboard"""
+    try:
+        # Create storage data
+        storage_data = {
+            'url': url,
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+            'riskScore': analysis_result.get('risk_score', 0),
+            'recommendation': analysis_result.get('recommendation', 'Unknown'),
+            'privacyThreats': analysis_result.get('privacy_threats', []),
+                           'forms': len(scraped_data.get('forms', [])),
+               'sensitiveFields': sum(1 for form in scraped_data.get('forms', []) 
+                                   for field in form.get('fields', []) if field.get('sensitive', False)),
+               'websiteType': scraped_data.get('websiteType', 'general'),
+               'verificationStatus': scraped_data.get('verificationStatus', 'Unknown'),
+               'verificationScore': scraped_data.get('verification', {}).get('verification_score', 0),
+               'sslCertificate': scraped_data.get('verification', {}).get('ssl_certificate', False),
+               'isoCertifications': len(scraped_data.get('verification', {}).get('iso_certifications', [])),
+               'analysis': analysis_result
+        }
+        
+        # Save to a JSON file that can be imported to Chrome storage
+        import os
+        storage_file = 'dashboard_data.json'
+        
+        # Load existing data if file exists
+        existing_data = []
+        if os.path.exists(storage_file):
+            try:
+                with open(storage_file, 'r') as f:
+                    existing_data = json.load(f)
+            except:
+                existing_data = []
+        
+        # Add new data to beginning
+        existing_data.insert(0, storage_data)
+        
+        # Keep only last 100 entries
+        if len(existing_data) > 100:
+            existing_data = existing_data[:100]
+        
+        # Save to file
+        with open(storage_file, 'w') as f:
+            json.dump(existing_data, f, indent=2)
+        
+        print(f"💾 Analysis saved to {storage_file} for dashboard import")
+        print(f"📊 Dashboard will show {len(existing_data)} total analyses")
+        
+    except Exception as e:
+        print(f"⚠️ Could not save to storage: {e}")
+
 def show_detailed_results(scraped_data, analysis_result):
     """Show detailed analysis results"""
     print(f"\n📊 Detailed Analysis Results")
     print("=" * 50)
     
-    # Website type detection
-    if analysis_result and 'website_type' in analysis_result:
-        website_type = analysis_result['website_type']
-        print(f"\n🌐 Website Type: {website_type.upper()}")
-        
-        # Show type-specific information
-        if 'social_media' in website_type:
-            print(f"   ⚠️ Social media platforms typically collect extensive personal data")
-        elif 'educational' in website_type:
-            print(f"   📚 Educational sites usually have moderate privacy risks")
-        elif 'financial' in website_type:
-            print(f"   💰 Financial sites handle extremely sensitive data")
-        elif 'ecommerce' in website_type:
-            print(f"   🛒 E-commerce sites collect payment and personal information")
+    # Detect website type with description
+    website_type, type_description = detect_website_type(scraped_data['url'], scraped_data['text'], scraped_data['forms'])
+    print(f"\n🌐 Website Type: {website_type.upper()}")
+    print(f"📋 Description: {type_description}")
+    
+    # Show type-specific information
+    if 'Social Media' in website_type:
+        print(f"   ⚠️ Social media platforms typically collect extensive personal data")
+    elif 'Educational' in website_type:
+        print(f"   📚 Educational sites usually have moderate privacy risks")
+    elif 'Financial' in website_type:
+        print(f"   💰 Financial sites handle extremely sensitive data")
+    elif 'E-commerce' in website_type:
+        print(f"   🛒 E-commerce sites collect payment and personal information")
+    elif 'Technology' in website_type:
+        print(f"   💻 Technology platforms may collect user data for services")
+    elif 'Healthcare' in website_type:
+        print(f"   🏥 Healthcare sites handle sensitive medical information")
+    elif 'Government' in website_type:
+        print(f"   🏛️ Government sites have official data collection policies")
+    elif 'Legal' in website_type:
+        print(f"   ⚖️ Legal sites may collect case-related information")
+    elif 'News/Media' in website_type:
+        print(f"   📰 News sites may track reading preferences and behavior")
+    
+    # Website verification analysis
+    verification_data = scraped_data.get('verification', {})
+    verification_status = scraped_data.get('verificationStatus', 'Unknown')
+    verification_description = scraped_data.get('verificationDescription', '')
+    
+    print(f"\n✅ Website Verification Analysis:")
+    print(f"   📊 Verification Status: {verification_status}")
+    print(f"   📋 Description: {verification_description}")
+    print(f"   🛡️ Verification Score: {verification_data.get('verification_score', 0)}/10")
+    
+    # SSL Certificate
+    if verification_data.get('ssl_certificate'):
+        print(f"   🔒 SSL Certificate: ✅ Present (HTTPS)")
+    else:
+        print(f"   🔒 SSL Certificate: ❌ Missing (HTTP only)")
+    
+    # ISO Certifications
+    iso_certs = verification_data.get('iso_certifications', [])
+    if iso_certs:
+        print(f"   📜 ISO Certifications ({len(iso_certs)}):")
+        for cert in iso_certs[:3]:  # Show first 3
+            print(f"      • {cert}")
+        if len(iso_certs) > 3:
+            print(f"      ... and {len(iso_certs) - 3} more")
+    else:
+        print(f"   📜 ISO Certifications: None detected")
+    
+    # Security Badges
+    security_badges = verification_data.get('security_badges', [])
+    if security_badges:
+        print(f"   🛡️ Security Badges ({len(security_badges)}):")
+        for badge in security_badges[:3]:  # Show first 3
+            print(f"      • {badge}")
+        if len(security_badges) > 3:
+            print(f"      ... and {len(security_badges) - 3} more")
+    else:
+        print(f"   🛡️ Security Badges: None detected")
+    
+    # Trust Indicators
+    trust_indicators = verification_data.get('trust_indicators', [])
+    if trust_indicators:
+        print(f"   🏆 Trust Indicators ({len(trust_indicators)}):")
+        for indicator in trust_indicators[:3]:  # Show first 3
+            print(f"      • {indicator}")
+        if len(trust_indicators) > 3:
+            print(f"      ... and {len(trust_indicators) - 3} more")
+    else:
+        print(f"   🏆 Trust Indicators: None detected")
     
     # Document type for legal documents
     if analysis_result and 'document_type' in analysis_result and analysis_result['document_type']:
@@ -780,10 +1015,14 @@ def main():
     # Step 2: Analyze with backend
     analysis_result = analyze_with_backend(scraped_data)
     
-    # Step 3: Show detailed results
+    # Step 3: Save to dashboard storage
+    if analysis_result:
+        save_to_chrome_storage(url, analysis_result, scraped_data)
+    
+    # Step 4: Show detailed results
     show_detailed_results(scraped_data, analysis_result)
     
-    # Step 4: Summary
+    # Step 5: Summary
     print(f"\n🎯 Summary:")
     print(f"   Website: {url}")
     print(f"   Risk Level: {analysis_result.get('recommendation', 'Unknown') if analysis_result else 'Analysis Failed'}")
@@ -792,6 +1031,7 @@ def main():
     
     print(f"\n🔒 ShadowLens Analysis Complete!")
     print("=" * 60)
+    print(f"📊 Check the dashboard at http://localhost:8080 to see this analysis!")
 
 if __name__ == "__main__":
     main() 

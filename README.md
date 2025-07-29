@@ -9,6 +9,13 @@
 - **Real-time Scraping**: Uses both basic requests and Selenium for JavaScript-heavy sites
 - **Multi-method Analysis**: Combines rule-based and AI-powered analysis for accurate results
 
+### 📊 **Dashboard & Analytics**
+- **Real-time Tracking**: Monitor all websites analyzed while the extension is active
+- **Risk Level Filtering**: Filter websites by risk level (Safe, Moderate, Caution, Dangerous)
+- **Search Functionality**: Search through website history by URL or content
+- **Analytics Charts**: Visual representation of risk distribution and privacy threats
+- **Data Export**: Export analysis history as JSON for further analysis
+
 ### 📊 **Detailed Risk Assessment**
 - **Risk Scoring**: 1-10 scale with specific recommendations
 - **Categorized Threats**: Privacy terms, legal clauses, data sharing, payment collection
@@ -68,6 +75,15 @@ When prompted, enter any website URL to analyze:
 - **Educational Sites**: `https://coursera.org`, `https://edx.org`
 - **Any other website** you want to analyze
 
+#### 4. View Dashboard (Optional)
+```bash
+# Start the dashboard server
+python3 dashboard/server.py
+
+# Open http://localhost:8080 in your browser
+# Watch real-time website analysis history!
+```
+
 ## 📋 Example Output
 
 ```
@@ -120,6 +136,12 @@ When prompted, enter any website URL to analyze:
 - **Legal Clauses**: Concerning terms, user rights, liability limitations
 - **Data Sharing**: Third-party sharing, data brokers, advertising partners
 - **Payment Collection**: Financial data, credit card information
+
+#### 4. **Dashboard System** (`dashboard/`)
+- **Real-time Tracking**: Chrome storage integration for website history
+- **Modern UI**: Responsive design with gradient backgrounds and animations
+- **Analytics Charts**: Risk distribution and threat analysis visualization
+- **Data Management**: Export functionality and search capabilities
 
 ### Risk Categories
 

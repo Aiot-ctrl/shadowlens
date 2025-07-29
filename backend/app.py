@@ -1,54 +1,73 @@
 #!/usr/bin/env python3
 """
-ShadowLens AI Backend
-Flask application for privacy threat analysis
+ShadowLens AI Backend - Enhanced Privacy Analysis
 """
 
 import os
-import json
 import logging
-from datetime import datetime
+import google.generativeai as genai
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import google.generativeai as genai
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+from dotenv import load_dotenv
+import re
+import json
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for Chrome extension
-
-# Configuration
-class Config:
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-    MISTRAL_MODEL_PATH = os.getenv('MISTRAL_MODEL_PATH', 'mistralai/Mistral-7B-Instruct-v0.2')
-    USE_GEMINI = bool(GEMINI_API_KEY)
-    USE_MISTRAL = not USE_GEMINI
-    MAX_TEXT_LENGTH = 3000
-    RISK_THRESHOLDS = {
-        'safe': 3,
-        'caution': 6,
-        'dangerous': 7
-    }
-
-# Initialize AI models
-class AIAnalyzer:
+class ShadowLensAI:
     def __init__(self):
-        self.config = Config()
+        self.config = type('Config', (), {
+            'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY', 'AIzaSyCpxYzcgkVPk1X8QiC05Rc6-KNd-np81i8')
+        })()
         self.gemini_model = None
-        self.mistral_model = None
-        self.mistral_tokenizer = None
+        self.init_gemini()
         
-        if self.config.USE_GEMINI:
-            self.init_gemini()
-        elif self.config.USE_MISTRAL:
-            self.init_mistral()
-    
+        # Enhanced detection patterns
+        self.deception_patterns = [
+            # Ambiguous language
+            r'\b(we may|we might|we could|we can|we reserve the right)\b',
+            r'\b(including but not limited to|such as|for example|and others)\b',
+            r'\b(reasonable|appropriate|necessary|as needed|when required)\b',
+            r'\b(third parties|partners|affiliates|service providers)\b',
+            r'\b(improve our services|enhance user experience|provide better features)\b',
+            
+            # Hidden data collection
+            r'\b(background|passive|automatic|continuous|ongoing)\s+(collection|tracking|monitoring)',
+            r'\b(device information|usage data|analytics|metrics|statistics)\b',
+            r'\b(cookies|pixels|beacons|fingerprinting|tracking)\b',
+            
+            # Deceptive practices
+            r'\b(opt-out|unsubscribe|disable|turn off)\b.*\b(difficult|complicated|multiple steps)',
+            r'\b(required|mandatory|essential)\b.*\b(optional|voluntary|your choice)',
+            r'\b(we don\'t sell|we don\'t share)\b.*\b(except|however|but)\b',
+            
+            # FERPA/GDPR compliance issues
+            r'\b(student records|educational records|academic information)\b.*\b(without consent|without notice)',
+            r'\b(under 13|children|minors)\b.*\b(collect|gather|obtain)\b',
+            r'\b(consent|permission)\b.*\b(parental|guardian)\b.*\b(not required|optional)',
+            r'\b(educational institution|school|university)\b.*\b(third party|external|commercial)\b'
+        ]
+        
+        self.ferpa_keywords = [
+            'student records', 'educational records', 'academic information',
+            'grades', 'attendance', 'disciplinary records', 'directory information',
+            'personally identifiable information', 'PII', 'student data'
+        ]
+        
+        self.gdpr_keywords = [
+            'personal data', 'data subject', 'data controller', 'data processor',
+            'right to be forgotten', 'right to access', 'data portability',
+            'consent', 'legitimate interest', 'data protection officer',
+            'privacy by design', 'data minimization', 'purpose limitation'
+        ]
+
     def init_gemini(self):
-        """Initialize Gemini Pro model"""
+        """Initialize Gemini AI model with fallback options"""
         try:
             genai.configure(api_key=self.config.GEMINI_API_KEY)
             # Try different model names
@@ -64,420 +83,246 @@ class AIAnalyzer:
                     logger.info("✅ Gemini Pro initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
-            self.config.USE_GEMINI = False
-            self.config.USE_MISTRAL = True
-    
-    def init_mistral(self):
-        """Initialize Mistral model for offline analysis"""
+            self.gemini_model = None
+
+    def detect_deception(self, text):
+        """Detect deceptive or ambiguous language in privacy policies"""
+        deception_indicators = []
+        text_lower = text.lower()
+        
+        for pattern in self.deception_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+            if matches:
+                deception_indicators.append({
+                    'type': 'deceptive_language',
+                    'pattern': pattern,
+                    'matches': len(matches),
+                    'examples': matches[:3]  # Show first 3 examples
+                })
+        
+        return deception_indicators
+
+    def check_ferpa_compliance(self, text):
+        """Check for FERPA compliance issues"""
+        ferpa_issues = []
+        text_lower = text.lower()
+        
+        # Check for student data collection without proper safeguards
+        if any(keyword in text_lower for keyword in self.ferpa_keywords):
+            if 'consent' not in text_lower and 'permission' not in text_lower:
+                ferpa_issues.append("Student data collection without explicit consent")
+            
+            if 'third party' in text_lower or 'external' in text_lower:
+                ferpa_issues.append("Student data sharing with third parties")
+            
+            if 'commercial' in text_lower or 'marketing' in text_lower:
+                ferpa_issues.append("Commercial use of student data")
+        
+        return ferpa_issues
+
+    def check_gdpr_compliance(self, text):
+        """Check for GDPR compliance issues"""
+        gdpr_issues = []
+        text_lower = text.lower()
+        
+        # Check for GDPR requirements
+        if 'personal data' in text_lower:
+            if 'right to be forgotten' not in text_lower:
+                gdpr_issues.append("Missing right to be forgotten")
+            
+            if 'data portability' not in text_lower:
+                gdpr_issues.append("Missing data portability rights")
+            
+            if 'consent' in text_lower and 'withdraw' not in text_lower:
+                gdpr_issues.append("Missing consent withdrawal mechanism")
+        
+        return gdpr_issues
+
+    def generate_student_summary(self, text):
+        """Generate student-friendly summary of privacy policy"""
+        if not self.gemini_model:
+            return "AI summarization not available"
+        
         try:
-            logger.info("🔄 Loading Mistral model...")
-            self.mistral_tokenizer = AutoTokenizer.from_pretrained(self.config.MISTRAL_MODEL_PATH)
-            self.mistral_model = AutoModelForCausalLM.from_pretrained(
-                self.config.MISTRAL_MODEL_PATH,
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-            logger.info("✅ Mistral model loaded successfully")
+            prompt = f"""
+            Summarize this privacy policy in simple, student-friendly language. 
+            Focus on what data is collected, how it's used, and what rights students have.
+            Keep it under 200 words and use simple language.
+            
+            Privacy Policy Text:
+            {text[:3000]}
+            
+            Provide a clear, easy-to-understand summary:
+            """
+            
+            response = self.gemini_model.generate_content(prompt)
+            return response.text
         except Exception as e:
-            logger.error(f"❌ Failed to load Mistral model: {e}")
-            logger.info("⚠️ Falling back to rule-based analysis")
-    
+            logger.error(f"Error generating summary: {e}")
+            return "Unable to generate summary"
+
     def analyze_with_gemini(self, data):
-        """Analyze data using Gemini Pro"""
+        """Enhanced AI analysis with deception detection and compliance checking"""
+        if not self.gemini_model:
+            return self.fallback_analysis(data)
+        
         try:
-            prompt = self.build_gemini_prompt(data)
+            text = data.get('text', '')
+            url = data.get('url', '')
+            website_type = data.get('websiteType', 'general')
+            is_legal_document = data.get('isLegalDocument', False)
+            document_type = data.get('documentType', '')
+            
+            # Enhanced prompt for comprehensive analysis
+            prompt = f"""
+            Analyze this website's privacy practices and provide a comprehensive assessment.
+            
+            Website: {url}
+            Type: {website_type}
+            Document Type: {document_type}
+            Content: {text[:5000]}
+            
+            Provide analysis in JSON format with:
+            1. risk_score (0-10)
+            2. recommendation (Safe/Moderate/High Risk/Dangerous)
+            3. privacy_threats (list of specific threats)
+            4. deception_indicators (ambiguous or deceptive practices)
+            5. ferpa_compliance (FERPA compliance issues)
+            6. gdpr_compliance (GDPR compliance issues)
+            7. student_summary (simple explanation for students)
+            8. red_flags (critical issues)
+            9. brand_impersonation (fake brand indicators)
+            10. summary (overall assessment)
+            
+            Focus on educational privacy, student data protection, and deceptive practices.
+            """
+            
             response = self.gemini_model.generate_content(prompt)
             
-            # Parse structured response
-            analysis = self.parse_ai_response(response.text)
-            return analysis
-            
+            try:
+                # Try to parse JSON response
+                result = json.loads(response.text)
+                return result
+            except:
+                # If JSON parsing fails, extract key information
+                return self.extract_ai_analysis(response.text, data)
+                
         except Exception as e:
-            logger.error(f"❌ Gemini analysis failed: {e}")
+            logger.error(f"Gemini analysis failed: {e}")
             return self.fallback_analysis(data)
-    
-    def analyze_with_mistral(self, data):
-        """Analyze data using Mistral model"""
-        try:
-            prompt = self.build_mistral_prompt(data)
-            
-            # Tokenize and generate
-            inputs = self.mistral_tokenizer(prompt, return_tensors="pt")
-            with torch.no_grad():
-                outputs = self.mistral_model.generate(
-                    **inputs,
-                    max_new_tokens=500,
-                    temperature=0.7,
-                    do_sample=True
-                )
-            
-            response = self.mistral_tokenizer.decode(outputs[0], skip_special_tokens=True)
-            analysis = self.parse_ai_response(response)
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"❌ Mistral analysis failed: {e}")
-            return self.fallback_analysis(data)
-    
-    def build_gemini_prompt(self, data):
-        """Build prompt for Gemini analysis"""
-        return f"""
-You are ShadowLens, an AI privacy guardian for EdTech platforms. Analyze this website data for privacy threats and brand impersonation.
 
-WEBSITE DATA:
-URL: {data.get('url', 'Unknown')}
-Forms: {len(data.get('forms', []))} forms detected
-Sensitive Fields: {self.count_sensitive_fields(data.get('forms', []))}
-Text Length: {len(data.get('text', ''))} characters
-Images: {len(data.get('images', []))} images
-Risk Indicators: {len(data.get('riskIndicators', []))} indicators
-
-FORM DETAILS:
-{self.format_forms(data.get('forms', []))}
-
-TEXT CONTENT (first 1000 chars):
-{data.get('text', '')[:1000]}
-
-RISK INDICATORS:
-{self.format_risk_indicators(data.get('riskIndicators', []))}
-
-ANALYSIS REQUIREMENTS:
-1. Identify privacy threats (excessive data collection, vague terms)
-2. Detect brand impersonation (fake logos, unauthorized claims)
-3. Assess data collection practices
-4. Calculate risk score (1-10)
-5. Provide recommendation (Safe/Caution/Dangerous)
-6. List specific red flags
-
-RESPONSE FORMAT (JSON):
-{{
-    "summary": "Brief analysis summary",
-    "risk_score": <1-10>,
-    "recommendation": "Safe|Caution|Dangerous",
-    "red_flags": ["flag1", "flag2", ...],
-    "privacy_threats": ["threat1", "threat2", ...],
-    "brand_impersonation": ["impersonation1", "impersonation2", ...],
-    "data_collection_analysis": "Analysis of data collection practices"
-}}
-"""
-    
-    def build_mistral_prompt(self, data):
-        """Build prompt for Mistral analysis"""
-        return f"""<s>[INST] You are ShadowLens, an AI privacy guardian for EdTech platforms. Analyze this website data for privacy threats and brand impersonation.
-
-WEBSITE DATA:
-URL: {data.get('url', 'Unknown')}
-Forms: {len(data.get('forms', []))} forms detected
-Sensitive Fields: {self.count_sensitive_fields(data.get('forms', []))}
-Text Length: {len(data.get('text', ''))} characters
-Images: {len(data.get('images', []))} images
-Risk Indicators: {len(data.get('riskIndicators', []))} indicators
-
-FORM DETAILS:
-{self.format_forms(data.get('forms', []))}
-
-TEXT CONTENT (first 1000 chars):
-{data.get('text', '')[:1000]}
-
-RISK INDICATORS:
-{self.format_risk_indicators(data.get('riskIndicators', []))}
-
-ANALYSIS REQUIREMENTS:
-1. Identify privacy threats (excessive data collection, vague terms)
-2. Detect brand impersonation (fake logos, unauthorized claims)
-3. Assess data collection practices
-4. Calculate risk score (1-10)
-5. Provide recommendation (Safe/Caution/Dangerous)
-6. List specific red flags
-
-RESPONSE FORMAT (JSON):
-{{
-    "summary": "Brief analysis summary",
-    "risk_score": <1-10>,
-    "recommendation": "Safe|Caution|Dangerous",
-    "red_flags": ["flag1", "flag2", ...],
-    "privacy_threats": ["threat1", "threat2", ...],
-    "brand_impersonation": ["impersonation1", "impersonation2", ...],
-    "data_collection_analysis": "Analysis of data collection practices"
-}}
-[/INST]</s>"""
-    
-    def count_sensitive_fields(self, forms):
-        """Count sensitive fields across all forms"""
-        count = 0
-        for form in forms:
-            for field in form.get('fields', []):
-                if field.get('sensitive', False):
-                    count += 1
-        return count
-    
-    def format_forms(self, forms):
-        """Format forms for prompt"""
-        if not forms:
-            return "No forms detected"
-        
-        formatted = []
-        for i, form in enumerate(forms):
-            fields = []
-            for field in form.get('fields', []):
-                field_info = f"{field.get('type', 'unknown')}: {field.get('name', 'unnamed')}"
-                if field.get('sensitive'):
-                    field_info += " (SENSITIVE)"
-                fields.append(field_info)
-            
-            formatted.append(f"Form {i+1}: {', '.join(fields)}")
-        
-        return "\n".join(formatted)
-    
-    def format_risk_indicators(self, indicators):
-        """Format risk indicators for prompt"""
-        if not indicators:
-            return "No risk indicators detected"
-        
-        formatted = []
-        for indicator in indicators:
-            formatted.append(f"- {indicator.get('type', 'unknown')}: {indicator.get('term', 'unknown')} ({indicator.get('risk', 'unknown')} risk)")
-        
-        return "\n".join(formatted)
-    
-    def parse_ai_response(self, response_text):
-        """Parse AI response and extract structured data"""
-        try:
-            # Try to extract JSON from response
-            start_idx = response_text.find('{')
-            end_idx = response_text.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != 0:
-                json_str = response_text[start_idx:end_idx]
-                analysis = json.loads(json_str)
-                
-                # Validate required fields
-                required_fields = ['summary', 'risk_score', 'recommendation', 'red_flags']
-                for field in required_fields:
-                    if field not in analysis:
-                        analysis[field] = self.get_default_value(field)
-                
-                return analysis
-            else:
-                # Fallback parsing
-                return self.parse_fallback_response(response_text)
-                
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse AI response: {e}")
-            return self.parse_fallback_response(response_text)
-    
-    def parse_fallback_response(self, response_text):
-        """Parse response when JSON parsing fails"""
-        # Simple keyword-based parsing
-        risk_score = 5  # Default
-        recommendation = "Caution"
-        red_flags = []
-        
+    def extract_ai_analysis(self, ai_text, data):
+        """Extract analysis from AI text response"""
         # Extract risk score
-        if "risk_score" in response_text.lower():
-            import re
-            score_match = re.search(r'risk_score["\s]*:["\s]*(\d+)', response_text, re.IGNORECASE)
-            if score_match:
-                risk_score = int(score_match.group(1))
+        risk_score = 5  # Default
+        if 'risk_score' in ai_text.lower():
+            try:
+                score_match = re.search(r'risk_score[:\s]*(\d+)', ai_text.lower())
+                if score_match:
+                    risk_score = int(score_match.group(1))
+            except:
+                pass
         
         # Extract recommendation
-        if "dangerous" in response_text.lower():
+        recommendation = "Moderate"
+        if 'dangerous' in ai_text.lower():
             recommendation = "Dangerous"
-            risk_score = max(risk_score, 7)
-        elif "safe" in response_text.lower():
+        elif 'high risk' in ai_text.lower():
+            recommendation = "High Risk"
+        elif 'safe' in ai_text.lower():
             recommendation = "Safe"
-            risk_score = min(risk_score, 3)
-        
-        # Extract red flags
-        if "red_flags" in response_text.lower() or "flag" in response_text.lower():
-            # Simple extraction of potential flags
-            lines = response_text.split('\n')
-            for line in lines:
-                if any(keyword in line.lower() for keyword in ['privacy', 'data', 'collection', 'brand', 'fake', 'unauthorized']):
-                    red_flags.append(line.strip())
         
         return {
-            "summary": "AI analysis completed",
-            "risk_score": risk_score,
-            "recommendation": recommendation,
-            "red_flags": red_flags[:5],  # Limit to 5 flags
-            "privacy_threats": [],
-            "brand_impersonation": [],
-            "data_collection_analysis": "Analysis completed"
-        }
-    
-    def get_default_value(self, field):
-        """Get default value for missing fields"""
-        defaults = {
-            'summary': 'Analysis completed',
-            'risk_score': 5,
-            'recommendation': 'Caution',
-            'red_flags': [],
-            'privacy_threats': [],
+            'risk_score': risk_score,
+            'recommendation': recommendation,
+            'privacy_threats': self.extract_threats(ai_text),
+            'deception_indicators': self.detect_deception(data.get('text', '')),
+            'ferpa_compliance': self.check_ferpa_compliance(data.get('text', '')),
+            'gdpr_compliance': self.check_gdpr_compliance(data.get('text', '')),
+            'student_summary': self.generate_student_summary(data.get('text', '')),
+            'red_flags': self.extract_red_flags(ai_text),
             'brand_impersonation': [],
-            'data_collection_analysis': 'Analysis completed'
+            'summary': ai_text[:200] + "..." if len(ai_text) > 200 else ai_text,
+            'ai_model': 'gemini-enhanced'
         }
-        return defaults.get(field, '')
-    
-    def fallback_analysis(self, data):
-        """Enhanced rule-based fallback analysis with website type detection"""
-        risk_score = 1
-        red_flags = []
-        privacy_threats = []
-        brand_impersonation = []
+
+    def extract_threats(self, text):
+        """Extract privacy threats from AI response"""
+        threats = []
+        threat_keywords = [
+            'data collection', 'tracking', 'cookies', 'third party',
+            'marketing', 'advertising', 'analytics', 'personal information'
+        ]
         
-        url = data.get('url', '').lower()
+        for keyword in threat_keywords:
+            if keyword in text.lower():
+                threats.append(f"Privacy term found: {keyword}")
+        
+        return threats
+
+    def extract_red_flags(self, text):
+        """Extract red flags from AI response"""
+        red_flags = []
+        if 'student' in text.lower() and 'data' in text.lower():
+            red_flags.append("Student data collection detected")
+        if 'third party' in text.lower():
+            red_flags.append("Third-party data sharing")
+        if 'marketing' in text.lower():
+            red_flags.append("Marketing use of data")
+        
+        return red_flags
+
+    def fallback_analysis(self, data):
+        """Enhanced fallback analysis with all features"""
         text = data.get('text', '').lower()
-        forms = data.get('forms', [])
-        indicators = data.get('riskIndicators', [])
+        url = data.get('url', '').lower()
+        website_type = data.get('websiteType', 'general')
         is_legal_document = data.get('isLegalDocument', False)
         document_type = data.get('documentType', '')
         
-        # Special analysis for legal documents
+        # Base risk score calculation
+        base_risk = 2
+        
+        # Website type adjustments
+        if 'social_media' in website_type:
+            base_risk += 3
+        elif 'financial' in website_type:
+            base_risk += 2
+        elif 'educational' in website_type:
+            base_risk += 1
+        
+        # Legal document analysis
         if is_legal_document:
-            print(f"📋 Analyzing legal document: {document_type}")
-            
-            # Base risk for legal documents
-            if 'privacy' in document_type:
-                risk_score += 2  # Privacy policies have inherent data collection
-                red_flags.append("Privacy policy detected - data collection practices")
-            elif 'terms' in document_type:
-                risk_score += 1  # Terms of service have user rights implications
-                red_flags.append("Terms of service detected - user rights analysis")
-            
-            # Analyze legal document content
-            legal_risk_terms = [
-                'disclaim all liability', 'not responsible', 'use at your own risk',
-                'no warranty', 'as is', 'without limitation', 'broad rights',
-                'perpetual license', 'irrevocable', 'transferable', 'sublicensable',
-                'right to modify', 'right to terminate', 'right to suspend',
-                'arbitration clause', 'class action waiver', 'governing law'
-            ]
-            
-            for term in legal_risk_terms:
-                if term in text:
-                    risk_score += 2
-                    red_flags.append(f"Concerning legal term: '{term}'")
-            
-            # Data sharing analysis for legal documents
-            sharing_terms = [
-                'share with third parties', 'sell your data', 'data brokers',
-                'advertising partners', 'marketing partners', 'analytics partners'
-            ]
-            
-            for term in sharing_terms:
-                if term in text:
-                    risk_score += 3
-                    privacy_threats.append(f"Data sharing clause: '{term}'")
-            
-            # User rights analysis
-            user_rights_terms = [
-                'right to delete', 'right to access', 'data portability',
-                'opt-out', 'withdraw consent', 'data subject rights'
-            ]
-            
-            positive_rights = 0
-            for term in user_rights_terms:
-                if term in text:
-                    positive_rights += 1
-            
-            if positive_rights >= 3:
-                risk_score -= 1  # Good user rights reduce risk
-                red_flags.append(f"Good user rights protection: {positive_rights} rights found")
+            base_risk += 2
+            if 'privacy_policy' in document_type:
+                base_risk += 1
+            elif 'terms_of_service' in document_type:
+                base_risk += 1
         
-        # Website type detection
-        website_type = self.detect_website_type(url, text)
+        # Enhanced threat detection
+        privacy_threats = []
+        if 'cookies' in text:
+            privacy_threats.append("Privacy term found: cookies")
+        if 'tracking' in text:
+            privacy_threats.append("Privacy term found: tracking")
+        if 'marketing' in text:
+            privacy_threats.append("Privacy term found: marketing")
+        if 'third party' in text:
+            privacy_threats.append("Privacy term found: third party")
+        if 'analytics' in text:
+            privacy_threats.append("Privacy term found: analytics")
         
-        # Base risk based on website type (for non-legal documents)
-        if not is_legal_document:
-            if 'social' in website_type or 'instagram' in url or 'facebook' in url or 'twitter' in url:
-                risk_score += 3  # Social media sites have higher privacy risks
-                red_flags.append("Social media platform detected - high data collection risk")
-            elif 'educational' in website_type or 'course' in website_type or 'learn' in website_type:
-                risk_score += 1  # Educational sites typically have moderate risks
-            elif 'banking' in website_type or 'financial' in website_type:
-                risk_score += 4  # Financial sites have very high risks
-                red_flags.append("Financial website detected - extremely sensitive data")
-            elif 'shopping' in website_type or 'ecommerce' in website_type:
-                risk_score += 2  # Shopping sites have moderate-high risks
-                red_flags.append("E-commerce website detected - payment data collection")
+        # Deception detection
+        deception_indicators = self.detect_deception(data.get('text', ''))
         
-        # Analyze forms more intelligently
-        sensitive_fields = 0
-        payment_fields = 0
-        personal_info_fields = 0
+        # Compliance checking
+        ferpa_issues = self.check_ferpa_compliance(data.get('text', ''))
+        gdpr_issues = self.check_gdpr_compliance(data.get('text', ''))
         
-        for form in forms:
-            for field in form.get('fields', []):
-                field_name = field.get('name', '').lower()
-                field_type = field.get('type', '').lower()
-                
-                if field.get('sensitive', False):
-                    sensitive_fields += 1
-                    
-                    # Categorize sensitive fields
-                    if any(term in field_name for term in ['card', 'credit', 'payment', 'paypal', 'stripe']):
-                        payment_fields += 1
-                        privacy_threats.append(f"Payment information field detected: {field_name}")
-                    elif any(term in field_name for term in ['ssn', 'social', 'security', 'id', 'passport']):
-                        personal_info_fields += 1
-                        privacy_threats.append(f"Government ID field detected: {field_name}")
-                    elif field_type == 'password':
-                        privacy_threats.append("Password field detected")
-                    elif field_type == 'email':
-                        privacy_threats.append("Email collection field detected")
+        # Risk score calculation
+        risk_score = min(10, base_risk + len(privacy_threats) + len(deception_indicators) + len(ferpa_issues) + len(gdpr_issues))
         
-        # Adjust risk based on field types
-        if payment_fields > 0:
-            risk_score += min(payment_fields * 3, 6)
-            red_flags.append(f"Found {payment_fields} payment-related fields")
-        
-        if personal_info_fields > 0:
-            risk_score += min(personal_info_fields * 4, 8)
-            red_flags.append(f"Found {personal_info_fields} government ID fields")
-        
-        if sensitive_fields > 0:
-            risk_score += min(sensitive_fields, 3)
-        
-        # Analyze risk indicators with context
-        if indicators:
-            risk_score += len(indicators)
-            for indicator in indicators:
-                if indicator.get('type') == 'privacy_term':
-                    privacy_threats.append(f"Privacy term found: {indicator.get('term')}")
-                elif indicator.get('type') == 'brand_impersonation':
-                    brand_impersonation.append(f"Brand impersonation: {indicator.get('term')}")
-                elif indicator.get('type') == 'concerning_legal_term':
-                    red_flags.append(f"Concerning legal term: {indicator.get('term')}")
-                elif indicator.get('type') == 'data_sharing':
-                    privacy_threats.append(f"Data sharing clause: {indicator.get('term')}")
-        
-        # Analyze text content for suspicious patterns
-        suspicious_patterns = [
-            'urgent', 'limited time', 'act now', 'exclusive offer',
-            'guaranteed', '100% free', 'no risk', 'instant access',
-            'government grant', 'tax refund', 'inheritance'
-        ]
-        
-        for pattern in suspicious_patterns:
-            if pattern in text:
-                risk_score += 1
-                red_flags.append(f"Suspicious language detected: '{pattern}'")
-        
-        # Check for excessive data collection
-        text_length = len(data.get('text', ''))
-        if text_length > 5000:
-            risk_score += 1
-            red_flags.append("Extensive content detected - potential data mining")
-        
-        # Check for third-party tracking indicators
-        tracking_indicators = ['google analytics', 'facebook pixel', 'tracking', 'cookies']
-        for indicator in tracking_indicators:
-            if indicator in text:
-                risk_score += 1
-                privacy_threats.append(f"Third-party tracking detected: {indicator}")
-        
-        # Determine recommendation with more granularity
+        # Recommendation based on risk score
         if risk_score >= 8:
             recommendation = "Dangerous"
         elif risk_score >= 6:
@@ -489,135 +334,131 @@ RESPONSE FORMAT (JSON):
         else:
             recommendation = "Safe"
         
-        analysis_summary = f"Enhanced analysis completed"
-        if is_legal_document:
-            analysis_summary += f" - Legal document type: {document_type}"
-        else:
-            analysis_summary += f" - Website type: {website_type}"
+        # Student summary
+        student_summary = self.generate_student_summary(data.get('text', ''))
         
         return {
-            "summary": analysis_summary,
-            "risk_score": min(risk_score, 10),
-            "recommendation": recommendation,
-            "red_flags": red_flags,
-            "privacy_threats": privacy_threats,
-            "brand_impersonation": brand_impersonation,
-            "data_collection_analysis": f"Detected {sensitive_fields} sensitive fields, {len(indicators)} risk indicators",
-            "website_type": website_type,
-            "document_type": document_type if is_legal_document else None,
-            "is_legal_document": is_legal_document
+            'risk_score': risk_score,
+            'recommendation': recommendation,
+            'privacy_threats': privacy_threats,
+            'deception_indicators': deception_indicators,
+            'ferpa_compliance': ferpa_issues,
+            'gdpr_compliance': gdpr_issues,
+            'student_summary': student_summary,
+            'red_flags': [f"{website_type} platform detected - data collection risk"] if website_type != 'general' else [],
+            'brand_impersonation': [],
+            'summary': f"Analysis of {website_type} website with {len(privacy_threats)} privacy threats detected",
+            'ai_model': 'enhanced-fallback'
         }
-    
-    def detect_website_type(self, url, text):
-        """Detect the type of website based on URL and content"""
-        url_lower = url.lower()
-        text_lower = text.lower()
-        
-        # Social media detection
-        if any(social in url_lower for social in ['instagram', 'facebook', 'twitter', 'tiktok', 'snapchat', 'linkedin']):
-            return "social_media"
-        
-        # Educational detection
-        if any(edu in url_lower for edu in ['coursera', 'edx', 'khanacademy', 'udemy', 'mit.edu', 'stanford.edu', 'harvard.edu', 'course', 'learn', 'education']):
-            return "educational"
-        
-        # Financial detection
-        if any(fin in url_lower for fin in ['bank', 'chase', 'wellsfargo', 'paypal', 'stripe', 'financial', 'credit', 'loan']):
-            return "financial"
-        
-        # E-commerce detection
-        if any(shop in url_lower for shop in ['amazon', 'ebay', 'shop', 'store', 'buy', 'purchase', 'cart']):
-            return "ecommerce"
-        
-        # Government detection
-        if any(gov in url_lower for gov in ['gov', 'government', 'irs', 'ssa']):
-            return "government"
-        
-        # Healthcare detection
-        if any(health in url_lower for health in ['health', 'medical', 'doctor', 'hospital', 'clinic']):
-            return "healthcare"
-        
-        # Content analysis for type detection
-        if any(term in text_lower for term in ['course', 'lesson', 'learn', 'education', 'university', 'college']):
-            return "educational"
-        elif any(term in text_lower for term in ['shop', 'buy', 'purchase', 'price', 'sale', 'discount']):
-            return "ecommerce"
-        elif any(term in text_lower for term in ['bank', 'account', 'payment', 'credit', 'loan']):
-            return "financial"
-        
-        return "general"
 
-# Initialize AI analyzer
-analyzer = AIAnalyzer()
+# Initialize AI
+ai_analyzer = ShadowLensAI()
+
+# Flask app
+app = Flask(__name__)
+CORS(app)
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'ai_model': 'gemini' if Config.USE_GEMINI else 'mistral' if analyzer.mistral_model else 'rule-based'
+        'ai_model': 'gemini-enhanced' if ai_analyzer.gemini_model else 'fallback',
+        'features': [
+            'AI Summarization',
+            'Deception Detection', 
+            'FERPA/GDPR Compliance',
+            'Risk Scoring',
+            'Real-time Analysis'
+        ]
     })
 
 @app.route('/analyze', methods=['POST'])
-def analyze_website():
-    """Main analysis endpoint"""
+def analyze():
+    """Enhanced analysis endpoint with all features"""
     try:
-        data = request.get_json()
+        data = request.json
         
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
-        logger.info(f"🔍 Analyzing website: {data.get('url', 'Unknown')}")
-        
-        # Validate required fields
-        required_fields = ['url', 'forms', 'text']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
-        
-        # Truncate text if too long
-        if len(data.get('text', '')) > Config.MAX_TEXT_LENGTH:
-            data['text'] = data['text'][:Config.MAX_TEXT_LENGTH]
-        
-        # Perform AI analysis
-        if Config.USE_GEMINI and analyzer.gemini_model:
-            analysis = analyzer.analyze_with_gemini(data)
-        elif Config.USE_MISTRAL and analyzer.mistral_model:
-            analysis = analyzer.analyze_with_mistral(data)
-        else:
-            analysis = analyzer.fallback_analysis(data)
+        # Perform enhanced analysis
+        result = ai_analyzer.analyze_with_gemini(data)
         
         # Add metadata
-        analysis['timestamp'] = datetime.now().isoformat()
-        analysis['url'] = data.get('url')
-        analysis['ai_model'] = 'gemini' if Config.USE_GEMINI else 'mistral' if analyzer.mistral_model else 'rule-based'
+        result['features_used'] = [
+            'AI Summarization',
+            'Deception Detection',
+            'FERPA/GDPR Compliance Checking',
+            'Enhanced Risk Scoring',
+            'Student-Friendly Summary'
+        ]
         
-        logger.info(f"✅ Analysis complete - Risk Score: {analysis.get('risk_score', 0)}/10")
-        
-        return jsonify(analysis)
+        return jsonify(result)
         
     except Exception as e:
-        logger.error(f"❌ Analysis failed: {e}")
+        logger.error(f"Analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/config', methods=['GET'])
-def get_config():
-    """Get current configuration"""
-    return jsonify({
-        'use_gemini': Config.USE_GEMINI,
-        'use_mistral': Config.USE_MISTRAL,
-        'gemini_available': bool(analyzer.gemini_model),
-        'mistral_available': bool(analyzer.mistral_model),
-        'max_text_length': Config.MAX_TEXT_LENGTH,
-        'risk_thresholds': Config.RISK_THRESHOLDS
-    })
+@app.route('/summarize', methods=['POST'])
+def summarize():
+    """Generate student-friendly summary"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        
+        summary = ai_analyzer.generate_student_summary(text)
+        
+        return jsonify({
+            'summary': summary,
+            'original_length': len(text),
+            'summary_length': len(summary)
+        })
+        
+    except Exception as e:
+        logger.error(f"Summarization error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/detect-deception', methods=['POST'])
+def detect_deception():
+    """Detect deceptive practices"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        
+        deception_indicators = ai_analyzer.detect_deception(text)
+        
+        return jsonify({
+            'deception_indicators': deception_indicators,
+            'total_indicators': len(deception_indicators)
+        })
+        
+    except Exception as e:
+        logger.error(f"Deception detection error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/compliance-check', methods=['POST'])
+def compliance_check():
+    """Check FERPA and GDPR compliance"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        
+        ferpa_issues = ai_analyzer.check_ferpa_compliance(text)
+        gdpr_issues = ai_analyzer.check_gdpr_compliance(text)
+        
+        return jsonify({
+            'ferpa_compliance': ferpa_issues,
+            'gdpr_compliance': gdpr_issues,
+            'ferpa_issues_count': len(ferpa_issues),
+            'gdpr_issues_count': len(gdpr_issues)
+        })
+        
+    except Exception as e:
+        logger.error(f"Compliance check error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    
-    logger.info(f"🚀 Starting ShadowLens AI Backend on port {port}")
-    logger.info(f"🤖 AI Model: {'Gemini Pro' if Config.USE_GEMINI else 'Mistral' if Config.USE_MISTRAL else 'Rule-based'}")
-    
-    app.run(host='0.0.0.0', port=port, debug=debug) 
+    logger.info("🚀 Starting ShadowLens AI Backend on port 5000")
+    logger.info("🤖 AI Model: Gemini Pro")
+    app.run(host='0.0.0.0', port=5000, debug=False) 
